@@ -387,6 +387,18 @@ export const userApi = {
     return response.data;
   },
 
+  // 학생 일괄 삭제
+  bulkDeleteStudents: async (ids: number[]): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.post('/users/students/bulk-delete', { ids });
+    return response.data;
+  },
+
+  // 관리자 일괄 삭제
+  bulkDeleteAdmins: async (ids: number[]): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.post('/users/admins/bulk-delete', { ids });
+    return response.data;
+  },
+
   // Excel 템플릿 다운로드
   downloadTemplate: async (): Promise<void> => {
     try {

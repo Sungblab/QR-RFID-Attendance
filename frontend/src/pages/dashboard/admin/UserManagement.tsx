@@ -95,6 +95,12 @@ const UserManagement: React.FC = () => {
   const [showUploadResults, setShowUploadResults] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Selection states for bulk delete
+  const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
+  const [selectedAdminIds, setSelectedAdminIds] = useState<number[]>([]);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [bulkDeleteType, setBulkDeleteType] = useState<'student' | 'admin'>('student');
+
   // Only admins can see admin management tab
   const canManageAdmins = user?.role === 'admin';
 
@@ -240,6 +246,44 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  // Selection handlers
+  const handleSelectAllStudents = (checked: boolean) => {
+    if (checked) {
+      setSelectedStudentIds(paginatedStudents.map(s => s.id));
+    } else {
+      setSelectedStudentIds([]);
+    }
+  };
+
+  const handleSelectStudent = (studentId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedStudentIds(prev => [...prev, studentId]);
+    } else {
+      setSelectedStudentIds(prev => prev.filter(id => id !== studentId));
+    }
+  };
+
+  const handleSelectAllAdmins = (checked: boolean) => {
+    if (checked) {
+      setSelectedAdminIds(paginatedAdmins.map(a => a.id));
+    } else {
+      setSelectedAdminIds([]);
+    }
+  };
+
+  const handleSelectAdmin = (adminId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedAdminIds(prev => [...prev, adminId]);
+    } else {
+      setSelectedAdminIds(prev => prev.filter(id => id !== adminId));
+    }
+  };
+
+  const handleBulkDelete = (type: 'student' | 'admin') => {
+    setBulkDeleteType(type);
+    setIsBulkDeleteModalOpen(true);
+  };
+
   // Modal handlers
   const handleEditStudent = (student: Student) => {
     setSelectedStudent(student);
@@ -361,6 +405,38 @@ const UserManagement: React.FC = () => {
     } catch (err) {
       setError('비밀번호 변경에 실패했습니다.');
       console.error('Error changing password:', err);
+    }
+  };
+
+  const handleBulkDeleteConfirm = async () => {
+    try {
+      setLoading(true);
+      let response;
+      
+      if (bulkDeleteType === 'student') {
+        response = await userApi.bulkDeleteStudents(selectedStudentIds);
+        if (response.success) {
+          setStudents(prev => prev.filter(s => !selectedStudentIds.includes(s.id)));
+          setSelectedStudentIds([]);
+        }
+      } else {
+        response = await userApi.bulkDeleteAdmins(selectedAdminIds);
+        if (response.success) {
+          setAdmins(prev => prev.filter(a => !selectedAdminIds.includes(a.id)));
+          setSelectedAdminIds([]);
+        }
+      }
+
+      if (response.success) {
+        setIsBulkDeleteModalOpen(false);
+      } else {
+        setError(response.message || '일괄 삭제에 실패했습니다.');
+      }
+    } catch (err) {
+      setError('일괄 삭제에 실패했습니다.');
+      console.error('Error bulk deleting:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -799,6 +875,15 @@ const UserManagement: React.FC = () => {
             + 학생 추가
           </button>
           
+          {selectedStudentIds.length > 0 && (
+            <button 
+              onClick={() => handleBulkDelete('student')}
+              className="px-4 sm:px-6 py-2 sm:py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl sm:rounded-2xl transition-all duration-300 font-medium text-sm sm:text-base"
+            >
+              선택 삭제 ({selectedStudentIds.length})
+            </button>
+          )}
+          
           {/* Excel Actions */}
           <div className="flex gap-2">
             <button 
@@ -956,7 +1041,7 @@ const UserManagement: React.FC = () => {
                 {searchTerm || gradeFilter || classFilter ? '검색 결과가 없습니다.' : '등록된 학생이 없습니다.'}
               </div>
             ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto">
+              <div className="space-y-3 max-h-[600px] overflow-y-auto">
                 {paginatedStudents.map((student) => (
                   <MobileStudentCard key={student.id} student={student} />
                 ))}
@@ -965,10 +1050,18 @@ const UserManagement: React.FC = () => {
           </div>
         ) : (
           // Desktop Table View
-          <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
+                  <th className="px-6 py-4 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedStudentIds.length === paginatedStudents.length && paginatedStudents.length > 0}
+                      onChange={(e) => handleSelectAllStudents(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                  </th>
                   <th 
                     className="px-6 py-4 text-left text-sm font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
                     onClick={() => handleSort('student_id')}
@@ -1015,13 +1108,21 @@ const UserManagement: React.FC = () => {
               <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
                 {!loading && paginatedStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                       {searchTerm || gradeFilter || classFilter ? '검색 결과가 없습니다.' : '등록된 학생이 없습니다.'}
                     </td>
                   </tr>
                 ) : (
                   paginatedStudents.map((student) => (
                     <tr key={student.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <td className="px-6 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedStudentIds.includes(student.id)}
+                          onChange={(e) => handleSelectStudent(student.id, e.target.checked)}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="px-6 py-4 text-sm text-gray-800 dark:text-gray-200">{student.student_id}</td>
                       <td className="px-6 py-4 text-sm font-medium text-gray-800 dark:text-gray-200">{student.name}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{student.grade}학년 {student.class}반 {student.number}번</td>
@@ -1110,15 +1211,26 @@ const UserManagement: React.FC = () => {
     <div className="space-y-6">
       {/* Header with Add Button */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0">
-        <button 
-          onClick={() => {
-            setSelectedAdmin(null);
-            setIsAddModalOpen(true);
-          }}
-          className="px-4 sm:px-6 py-2 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl sm:rounded-2xl transition-all duration-300 font-medium text-sm sm:text-base self-start sm:self-auto"
-        >
-          + 관리자 추가
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <button 
+            onClick={() => {
+              setSelectedAdmin(null);
+              setIsAddModalOpen(true);
+            }}
+            className="px-4 sm:px-6 py-2 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl sm:rounded-2xl transition-all duration-300 font-medium text-sm sm:text-base self-start sm:self-auto"
+          >
+            + 관리자 추가
+          </button>
+          
+          {selectedAdminIds.length > 0 && (
+            <button 
+              onClick={() => handleBulkDelete('admin')}
+              className="px-4 sm:px-6 py-2 sm:py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl sm:rounded-2xl transition-all duration-300 font-medium text-sm sm:text-base"
+            >
+              선택 삭제 ({selectedAdminIds.length})
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search and Controls */}
@@ -1179,7 +1291,7 @@ const UserManagement: React.FC = () => {
                 {searchTerm ? '검색 결과가 없습니다.' : '등록된 관리자가 없습니다.'}
               </div>
             ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto">
+              <div className="space-y-3 max-h-[600px] overflow-y-auto">
                 {paginatedAdmins.map((admin) => (
                   <MobileAdminCard key={admin.id} admin={admin} />
                 ))}
@@ -1188,10 +1300,18 @@ const UserManagement: React.FC = () => {
           </div>
         ) : (
           // Desktop Table View
-          <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
+                  <th className="px-6 py-4 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedAdminIds.length === paginatedAdmins.length && paginatedAdmins.length > 0}
+                      onChange={(e) => handleSelectAllAdmins(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                  </th>
                   <th 
                     className="px-6 py-4 text-left text-sm font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
                     onClick={() => handleSort('name')}
@@ -1263,13 +1383,21 @@ const UserManagement: React.FC = () => {
               <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
                 {!loading && paginatedAdmins.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                       {searchTerm ? '검색 결과가 없습니다.' : '등록된 관리자가 없습니다.'}
                     </td>
                   </tr>
                 ) : (
                   paginatedAdmins.map((admin) => (
                     <tr key={admin.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <td className="px-6 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedAdminIds.includes(admin.id)}
+                          onChange={(e) => handleSelectAdmin(admin.id, e.target.checked)}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="px-6 py-4 text-sm font-medium text-gray-800 dark:text-gray-200">{admin.name}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{admin.username}</td>
                       <td className="px-6 py-4 text-sm">
@@ -1686,6 +1814,18 @@ const UserManagement: React.FC = () => {
         }}
         onSubmit={handleChangePasswordConfirm}
         error={error}
+      />
+      
+      {/* Bulk Delete Modal */}
+      <DeleteConfirmModal
+        isOpen={isBulkDeleteModalOpen}
+        isBulkDelete={true}
+        bulkDeleteCount={bulkDeleteType === 'student' ? selectedStudentIds.length : selectedAdminIds.length}
+        bulkDeleteType={bulkDeleteType}
+        onClose={() => {
+          setIsBulkDeleteModalOpen(false);
+        }}
+        onConfirm={handleBulkDeleteConfirm}
       />
 
       {/* Excel 업로드 결과 모달 */}

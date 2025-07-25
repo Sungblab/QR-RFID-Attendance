@@ -425,6 +425,108 @@ router.put('/admins/:id', authenticateToken, authorizeRoles(['admin']), async (r
 
 /**
  * @swagger
+ * /users/admins/bulk-delete:
+ *   post:
+ *     summary: 관리자 일괄 삭제
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: 삭제할 관리자 ID 목록
+ *     responses:
+ *       200:
+ *         description: 관리자 일괄 삭제 성공
+ *       400:
+ *         description: 잘못된 요청
+ */
+router.post('/admins/bulk-delete', authenticateToken, authorizeRoles(['admin']), async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '삭제할 관리자 ID 목록이 필요합니다.',
+        code: 'INVALID_IDS'
+      });
+    }
+
+    // 자기 자신이 포함되어 있는지 확인
+    if (ids.includes(req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: '자신의 계정은 삭제할 수 없습니다.',
+        code: 'CANNOT_DELETE_SELF'
+      });
+    }
+
+    // 삭제할 관리자들의 정보를 먼저 조회
+    const adminsToDelete = await User.findAll({
+      where: {
+        id: ids,
+        role: ['admin', 'teacher']
+      },
+      attributes: ['id', 'name', 'username', 'role']
+    });
+
+    if (adminsToDelete.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '삭제할 관리자를 찾을 수 없습니다.',
+        code: 'ADMINS_NOT_FOUND'
+      });
+    }
+
+    // 관리자들 삭제
+    const deletedCount = await User.destroy({
+      where: {
+        id: ids,
+        role: ['admin', 'teacher']
+      }
+    });
+
+    logger.info(`관리자 일괄 삭제: ${deletedCount}명`, {
+      userId: req.user.id,
+      userRole: req.user.role,
+      deletedIds: ids,
+      deletedAdmins: adminsToDelete.map(a => ({
+        id: a.id,
+        name: a.name,
+        username: a.username,
+        role: a.role
+      }))
+    });
+
+    res.json({
+      success: true,
+      message: `${deletedCount}명의 관리자가 삭제되었습니다.`,
+      data: {
+        deletedCount,
+        requestedCount: ids.length
+      }
+    });
+  } catch (error) {
+    logger.error('관리자 일괄 삭제 실패:', error);
+    res.status(500).json({
+      success: false,
+      message: '관리자 일괄 삭제 중 오류가 발생했습니다.',
+      code: 'BULK_DELETE_ERROR'
+    });
+  }
+});
+
+/**
+ * @swagger
  * /users/admins/{id}:
  *   delete:
  *     summary: 관리자 삭제
@@ -714,6 +816,252 @@ router.get('/students/export', async (req, res) => {
       success: false,
       message: '학생 목록을 내보내는 중 오류가 발생했습니다.',
       code: 'EXPORT_ERROR'
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /users/students/bulk:
+ *   post:
+ *     summary: 학생 일괄 등록 (Excel 업로드)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel 파일 (.xlsx)
+ *     responses:
+ *       200:
+ *         description: 일괄 등록 완료
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalRows:
+ *                       type: integer
+ *                       description: 전체 처리 행 수
+ *                     successCount:
+ *                       type: integer
+ *                       description: 성공한 행 수
+ *                     failureCount:
+ *                       type: integer
+ *                       description: 실패한 행 수
+ *                     duplicateCount:
+ *                       type: integer
+ *                       description: 중복된 행 수
+ *                     errors:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           row:
+ *                             type: integer
+ *                           student_id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           error:
+ *                             type: string
+ *       400:
+ *         description: 잘못된 파일 형식
+ */
+router.post('/students/bulk', authenticateToken, authorizeRoles(['admin', 'teacher']), upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: '파일이 업로드되지 않았습니다.',
+        code: 'NO_FILE_UPLOADED'
+      });
+    }
+
+    // Excel 파일 읽기
+    const workbook = XLSX.read(req.file.buffer);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+    if (jsonData.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Excel 파일에 데이터가 없습니다.',
+        code: 'EMPTY_FILE'
+      });
+    }
+
+    // 결과 추적
+    const results = {
+      totalRows: jsonData.length,
+      successCount: 0,
+      failureCount: 0,
+      duplicateCount: 0,
+      errors: []
+    };
+
+    // 트랜잭션 시작
+    const transaction = await require('../../models').sequelize.transaction();
+
+    try {
+      for (let i = 0; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        const rowNumber = i + 2; // Excel은 1부터 시작, 헤더 제외
+
+        try {
+          // 필수 필드 검증
+          const student_id = row['학번']?.toString().trim();
+          const name = row['이름']?.toString().trim();
+          const grade = parseInt(row['학년']);
+          const classNum = parseInt(row['반']);
+          const number = row['번호'] ? parseInt(row['번호']) : null;
+          const password = row['비밀번호']?.toString().trim();
+
+          if (!student_id || !name || !grade || !classNum) {
+            results.errors.push({
+              row: rowNumber,
+              student_id: student_id || '없음',
+              name: name || '없음',
+              error: '필수 필드가 누락되었습니다 (학번, 이름, 학년, 반)'
+            });
+            results.failureCount++;
+            continue;
+          }
+
+          // 유효성 검사
+          if (grade < 1 || grade > 3) {
+            results.errors.push({
+              row: rowNumber,
+              student_id,
+              name,
+              error: '학년은 1-3 사이여야 합니다'
+            });
+            results.failureCount++;
+            continue;
+          }
+
+          if (classNum < 1 || classNum > 20) {
+            results.errors.push({
+              row: rowNumber,
+              student_id,
+              name,
+              error: '반은 1-20 사이여야 합니다'
+            });
+            results.failureCount++;
+            continue;
+          }
+
+          if (number && (number < 1 || number > 50)) {
+            results.errors.push({
+              row: rowNumber,
+              student_id,
+              name,
+              error: '번호는 1-50 사이여야 합니다'
+            });
+            results.failureCount++;
+            continue;
+          }
+
+          // 중복 검사
+          const existingStudent = await User.findOne({
+            where: { student_id, role: 'student' },
+            transaction
+          });
+
+          if (existingStudent) {
+            results.errors.push({
+              row: rowNumber,
+              student_id,
+              name,
+              error: '이미 등록된 학번입니다'
+            });
+            results.duplicateCount++;
+            continue;
+          }
+
+          // RFID 코드 생성
+          let rfid_card_id = generateSecureRFIDCode();
+          
+          // RFID 중복 확인 (매우 드물지만 가능)
+          let retries = 0;
+          while (retries < 5) {
+            const existingRfid = await User.findOne({
+              where: { rfid_card_id },
+              transaction
+            });
+            if (!existingRfid) break;
+            rfid_card_id = generateSecureRFIDCode();
+            retries++;
+          }
+
+          // 학생 생성
+          await User.create({
+            username: student_id,
+            student_id,
+            name,
+            grade,
+            class: classNum,
+            number,
+            password: password || student_id,
+            rfid_card_id,
+            role: 'student'
+          }, { transaction });
+
+          results.successCount++;
+        } catch (error) {
+          results.errors.push({
+            row: rowNumber,
+            student_id: row['학번'] || '없음',
+            name: row['이름'] || '없음',
+            error: error.message || '처리 중 오류 발생'
+          });
+          results.failureCount++;
+        }
+      }
+
+      // 트랜잭션 커밋
+      await transaction.commit();
+
+      logger.info(`학생 일괄 등록 완료: 성공 ${results.successCount}명, 실패 ${results.failureCount}명, 중복 ${results.duplicateCount}명`, {
+        userId: req.user.id,
+        userRole: req.user.role,
+        results
+      });
+
+      res.json({
+        success: true,
+        message: `전체 ${results.totalRows}명 중 ${results.successCount}명 등록 완료`,
+        data: results
+      });
+
+    } catch (error) {
+      // 트랜잭션 롤백
+      await transaction.rollback();
+      throw error;
+    }
+
+  } catch (error) {
+    logger.error('학생 일괄 등록 실패:', error);
+    res.status(500).json({
+      success: false,
+      message: '학생 일괄 등록 중 오류가 발생했습니다.',
+      code: 'BULK_IMPORT_ERROR',
+      error: error.message
     });
   }
 });
@@ -1060,6 +1408,98 @@ router.put('/students/:id', authenticateToken, authorizeRoles(['admin', 'teacher
       success: false,
       message: '학생 정보를 수정하는 중 오류가 발생했습니다.',
       code: 'STUDENT_UPDATE_ERROR'
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /users/students/bulk-delete:
+ *   post:
+ *     summary: 학생 일괄 삭제
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: 삭제할 학생 ID 목록
+ *     responses:
+ *       200:
+ *         description: 학생 일괄 삭제 성공
+ *       400:
+ *         description: 잘못된 요청
+ */
+router.post('/students/bulk-delete', authenticateToken, authorizeRoles(['admin']), async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '삭제할 학생 ID 목록이 필요합니다.',
+        code: 'INVALID_IDS'
+      });
+    }
+
+    // 삭제할 학생들의 정보를 먼저 조회
+    const studentsToDelete = await User.findAll({
+      where: {
+        id: ids,
+        role: 'student'
+      },
+      attributes: ['id', 'name', 'student_id']
+    });
+
+    if (studentsToDelete.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '삭제할 학생을 찾을 수 없습니다.',
+        code: 'STUDENTS_NOT_FOUND'
+      });
+    }
+
+    // 학생들 삭제
+    const deletedCount = await User.destroy({
+      where: {
+        id: ids,
+        role: 'student'
+      }
+    });
+
+    logger.info(`학생 일괄 삭제: ${deletedCount}명`, {
+      userId: req.user.id,
+      userRole: req.user.role,
+      deletedIds: ids,
+      deletedStudents: studentsToDelete.map(s => ({
+        id: s.id,
+        name: s.name,
+        student_id: s.student_id
+      }))
+    });
+
+    res.json({
+      success: true,
+      message: `${deletedCount}명의 학생이 삭제되었습니다.`,
+      data: {
+        deletedCount,
+        requestedCount: ids.length
+      }
+    });
+  } catch (error) {
+    logger.error('학생 일괄 삭제 실패:', error);
+    res.status(500).json({
+      success: false,
+      message: '학생 일괄 삭제 중 오류가 발생했습니다.',
+      code: 'BULK_DELETE_ERROR'
     });
   }
 });
