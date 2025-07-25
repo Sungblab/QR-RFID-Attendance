@@ -603,8 +603,9 @@ const UserManagement: React.FC = () => {
       } else {
         setError(response.message || 'Excel 파일 업로드에 실패했습니다.');
       }
-    } catch (error: any) {
-      setError(error.response?.data?.message || 'Excel 파일 업로드 중 오류가 발생했습니다.');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Excel 파일 업로드 중 오류가 발생했습니다.';
+      setError(errorMessage);
       console.error('Bulk import error:', error);
     } finally {
       setIsUploading(false);
@@ -624,8 +625,9 @@ const UserManagement: React.FC = () => {
       if (classFilter) filters.class = parseInt(classFilter);
       
       await userApi.exportStudents(filters);
-    } catch (error: any) {
-      setError(error.message || '학생 목록 내보내기에 실패했습니다.');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '학생 목록 내보내기에 실패했습니다.';
+      setError(errorMessage);
       console.error('Export error:', error);
     } finally {
       setIsExporting(false);
