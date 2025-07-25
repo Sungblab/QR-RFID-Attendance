@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { userApi, type User } from '../../../../services/api';
 import { webSerialManager } from '../../../../utils/webSerial';
 
@@ -11,13 +11,6 @@ interface SerialPort {
   manufacturer?: string;
 }
 
-// Window 객체 타입 확장
-declare global {
-  interface Window {
-    currentScanInterval: number | null;
-    currentScanTimeout: number | null;
-  }
-}
 
 const RFIDManagement: React.FC = () => {
   const [students, setStudents] = useState<RFIDUser[]>([]);
@@ -47,6 +40,10 @@ const RFIDManagement: React.FC = () => {
   const [scanMode, setScanMode] = useState<'register' | 'reregister'>('register');
   const [manualCardId, setManualCardId] = useState('');
   const [generatedCardId, setGeneratedCardId] = useState('');
+  
+  // RFID 이벤트 리스너
+  const rfidListenerRef = useRef<((data: any) => void) | null>(null);
+  const [isRfidListening, setIsRfidListening] = useState(false);
 
   // 암호학적으로 안전한 랜덤 RFID 코드 생성 (4바이트 = 8자리 16진수)
   const generateSecureRFIDCode = (): string => {
@@ -165,7 +162,53 @@ const RFIDManagement: React.FC = () => {
     setGeneratedCardId('');
   };
 
-  // RFID 스캔 시작 (Web Serial API)
+  // RFID 이벤트 리스너 시작
+  const startRfidListener = () => {
+    console.log('[DEBUG] RFIDManagement - 이벤트 리스너 시작, isConnected:', isConnected, 'isRfidListening:', isRfidListening);
+    
+    if (!isConnected) {
+      alert('Arduino를 먼저 연결하세요.');
+      return;
+    }
+
+    if (isRfidListening) {
+      console.log('[DEBUG] RFIDManagement - 이미 리스닝 중');
+      return;
+    }
+
+    // RFID 이벤트 핸들러 생성
+    const rfidEventHandler = async (data: any) => {
+      try {
+        if (data.type === 'RFID_TAG' && data.card_id) {
+          console.log(`[DEBUG] RFIDManagement - ✅ RFID 태그 감지: ${data.card_id}`);
+          setScannedCard(data.card_id);
+          setManualCardId(data.card_id);
+          setError(null);
+        }
+      } catch (error) {
+        console.error('[DEBUG] RFIDManagement - RFID 처리 오류:', error);
+        setError('RFID 처리 중 오류가 발생했습니다.');
+      }
+    };
+
+    // 리스너 등록
+    rfidListenerRef.current = rfidEventHandler;
+    webSerialManager.addDataListener(rfidEventHandler);
+    setIsRfidListening(true);
+    console.log('[DEBUG] RFIDManagement - 이벤트 리스너 시작됨');
+  };
+
+  // RFID 이벤트 리스너 중지
+  const stopRfidListener = () => {
+    if (rfidListenerRef.current) {
+      webSerialManager.removeDataListener(rfidListenerRef.current);
+      rfidListenerRef.current = null;
+    }
+    setIsRfidListening(false);
+    console.log('[DEBUG] RFIDManagement - 이벤트 리스너 중지됨');
+  };
+
+  // RFID 스캔 시작 (이벤트 기반)
   const startScan = () => {
     console.log('[DEBUG] RFIDManagement - 스캔 시작, isConnected:', isConnected);
     
@@ -178,62 +221,14 @@ const RFIDManagement: React.FC = () => {
     setScannedCard('');
     setError(null);
     
-    let scanActive = true;
-    
-    const interval = setInterval(async () => {
-      if (!scanActive) {
-        clearInterval(interval);
-        return;
-      }
-      
-      try {
-        console.log('[DEBUG] RFIDManagement - RFID 체크 시도...');
-        const result = await webSerialManager.checkRFIDTag();
-        console.log('[DEBUG] RFIDManagement - RFID 체크 결과:', result);
-        
-        if (result.hasNewTag && result.uid) {
-          console.log('[DEBUG] RFIDManagement - ✅ 태그 발견:', result.uid);
-          setScannedCard(result.uid);
-          setManualCardId(result.uid);
-          setIsScanning(false);
-          scanActive = false;
-          clearInterval(interval);
-        }
-      } catch (err) {
-        console.error('[DEBUG] RFIDManagement - RFID 스캔 오류:', err);
-        setError('RFID 스캔 중 오류가 발생했습니다.');
-        setIsScanning(false);
-        scanActive = false;
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    // 30초 후 자동 중지
-    const timeout = setTimeout(() => {
-      if (scanActive) {
-        setIsScanning(false);
-        scanActive = false;
-        clearInterval(interval);
-        setError('스캔 시간 초과. 다시 시도해주세요.');
-      }
-    }, 30000);
-
-    // cleanup을 위해 timeout과 interval을 저장
-    window.currentScanInterval = interval;
-    window.currentScanTimeout = timeout;
+    // 이벤트 리스너 시작
+    startRfidListener();
   };
 
   // 스캔 중지
   const stopScan = () => {
     setIsScanning(false);
-    if (window.currentScanInterval) {
-      clearInterval(window.currentScanInterval);
-      window.currentScanInterval = null;
-    }
-    if (window.currentScanTimeout) {
-      clearTimeout(window.currentScanTimeout);
-      window.currentScanTimeout = null;
-    }
+    stopRfidListener();
   };
 
   // RFID 카드 등록/재등록
@@ -379,6 +374,30 @@ const RFIDManagement: React.FC = () => {
     
     return () => clearInterval(interval);
   }, []);
+
+  // Arduino 연결 상태 변경 시 RFID 이벤트 리스너 자동 관리
+  useEffect(() => {
+    console.log('[DEBUG] RFIDManagement - useEffect 트리거 - isConnected:', isConnected, 'isRfidListening:', isRfidListening);
+    
+    if (!isConnected && isRfidListening) {
+      // Arduino 연결 해제되면 이벤트 리스너 중지
+      console.log('[DEBUG] RFIDManagement - Arduino 연결 해제됨, 이벤트 리스너 중지');
+      stopRfidListener();
+    }
+  }, [isConnected, isRfidListening]);
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      stopRfidListener();
+      // Arduino 연결이 있으면 해제
+      if (isConnected) {
+        webSerialManager.disconnect().catch(error => {
+          console.error('컴포넌트 언마운트 시 Arduino 연결 해제 실패:', error);
+        });
+      }
+    };
+  }, [isConnected]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -693,7 +712,7 @@ const RFIDManagement: React.FC = () => {
                     type="text"
                     value={manualCardId}
                     onChange={(e) => setManualCardId(e.target.value)}
-                    placeholder={isScanning ? "RFID 카드를 태그하세요..." : "직접 입력 또는 스캔"}
+                    placeholder={isScanning ? (isRfidListening ? "RFID 카드를 태그하세요..." : "이벤트 리스너 시작 중...") : "직접 입력 또는 이벤트 수신"}
                     className="flex-1 p-2 border rounded-lg font-mono text-sm"
                     disabled={isScanning}
                   />
@@ -707,7 +726,7 @@ const RFIDManagement: React.FC = () => {
                     }`}
                     title={!isConnected ? `Arduino 연결 안됨 (${selectedPort || '포트 선택 안됨'})` : ''}
                   >
-                    {isScanning ? '스캔 중지' : '스캔'}
+                    {isScanning ? (isRfidListening ? '이벤트 수신 중지' : '스캔 중지') : '이벤트 수신 시작'}
                   </button>
                 </div>
                 
@@ -736,8 +755,8 @@ const RFIDManagement: React.FC = () => {
                 
                 {isScanning && (
                   <div className="mt-2 flex items-center gap-2 text-sm text-blue-600">
-                    <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-                    RFID 카드를 리더기에 태그해주세요...
+                    <div className={`w-4 h-4 border-2 border-blue-600 rounded-full ${isRfidListening ? 'border-t-transparent animate-spin' : ''}`}></div>
+                    {isRfidListening ? 'RFID 이벤트 수신 중... 카드를 태그해주세요' : 'RFID 이벤트 리스너 시작 중...'}
                   </div>
                 )}
                 
