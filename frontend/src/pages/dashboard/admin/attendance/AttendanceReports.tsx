@@ -17,19 +17,38 @@ const AttendanceReports: React.FC = () => {
   const [unprocessedAttendances, setUnprocessedAttendances] = useState<UnprocessedAttendance[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Get saved filters from localStorage or default values
+  const getSavedFilter = (key: string, defaultValue: string) => {
+    try {
+      return localStorage.getItem(`attendanceReports_${key}`) || defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  };
+  
+  const [startDate, setStartDate] = useState(() => getSavedFilter('startDate', new Date().toISOString().split('T')[0]));
+  const [endDate, setEndDate] = useState(() => getSavedFilter('endDate', new Date().toISOString().split('T')[0]));
   
   // Filter states
-  const [typeFilter, setTypeFilter] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [gradeFilter, setGradeFilter] = useState<string>('');
-  const [classFilter, setClassFilter] = useState<string>('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>(() => getSavedFilter('typeFilter', ''));
+  const [statusFilter, setStatusFilter] = useState<string>(() => getSavedFilter('statusFilter', ''));
+  const [gradeFilter, setGradeFilter] = useState<string>(() => getSavedFilter('gradeFilter', ''));
+  const [classFilter, setClassFilter] = useState<string>(() => getSavedFilter('classFilter', ''));
+  const [searchTerm, setSearchTerm] = useState(() => getSavedFilter('searchTerm', ''));
   
   // Sort states
   const [sortField, setSortField] = useState<string>('submitted_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  
+  // Save filter to localStorage
+  const saveFilter = (key: string, value: string) => {
+    try {
+      localStorage.setItem(`attendanceReports_${key}`, value);
+    } catch (error) {
+      console.warn('Failed to save filter to localStorage:', error);
+    }
+  };
   
   // Modal states
   const [selectedUnprocessed, setSelectedUnprocessed] = useState<UnprocessedAttendance | null>(null);
@@ -464,7 +483,10 @@ const AttendanceReports: React.FC = () => {
             <input
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                saveFilter('startDate', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             />
           </div>
@@ -474,7 +496,10 @@ const AttendanceReports: React.FC = () => {
             <input
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                saveFilter('endDate', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             />
           </div>
@@ -483,7 +508,10 @@ const AttendanceReports: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">신고 유형</label>
             <select
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
+              onChange={(e) => {
+                setTypeFilter(e.target.value);
+                saveFilter('typeFilter', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="">전체</option>
@@ -499,7 +527,10 @@ const AttendanceReports: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">처리 상태</label>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                saveFilter('statusFilter', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="">전체</option>
@@ -513,7 +544,10 @@ const AttendanceReports: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">학년</label>
             <select
               value={gradeFilter}
-              onChange={(e) => setGradeFilter(e.target.value)}
+              onChange={(e) => {
+                setGradeFilter(e.target.value);
+                saveFilter('gradeFilter', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="">전체</option>
@@ -527,7 +561,10 @@ const AttendanceReports: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">반</label>
             <select
               value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
+              onChange={(e) => {
+                setClassFilter(e.target.value);
+                saveFilter('classFilter', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="">전체</option>
@@ -543,7 +580,10 @@ const AttendanceReports: React.FC = () => {
               type="text"
               placeholder="이름, 학번, 사유..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                saveFilter('searchTerm', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             />
           </div>
@@ -572,6 +612,15 @@ const AttendanceReports: React.FC = () => {
                 const today = new Date().toISOString().split('T')[0];
                 setStartDate(today);
                 setEndDate(today);
+                
+                // Clear localStorage
+                saveFilter('searchTerm', '');
+                saveFilter('typeFilter', '');
+                saveFilter('statusFilter', '');
+                saveFilter('gradeFilter', '');
+                saveFilter('classFilter', '');
+                saveFilter('startDate', today);
+                saveFilter('endDate', today);
               }}
               className="px-3 sm:px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors text-xs sm:text-sm self-start sm:self-auto"
             >

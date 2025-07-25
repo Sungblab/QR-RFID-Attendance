@@ -14,24 +14,25 @@ interface DeleteConfirmModalProps {
   isOpen: boolean;
   student?: Student | null;
   admin?: Admin | null;
+  onClose: () => void;
+  onConfirm: () => void;
+  // 일괄 삭제 관련 props 추가
   isBulkDelete?: boolean;
   bulkDeleteCount?: number;
   bulkDeleteType?: 'student' | 'admin';
-  onClose: () => void;
-  onConfirm: () => void;
 }
 
 const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   isOpen,
   student,
   admin,
-  isBulkDelete,
-  bulkDeleteCount,
-  bulkDeleteType,
   onClose,
-  onConfirm
+  onConfirm,
+  isBulkDelete = false,
+  bulkDeleteCount = 0,
+  bulkDeleteType = 'student'
 }) => {
-  const isStudent = !!student || bulkDeleteType === 'student';
+  const isStudent = !!student;
   const name = student?.name || admin?.name;
 
   if (!isOpen) return null;
@@ -40,12 +41,15 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">
-          {isBulkDelete ? '일괄 삭제' : `${isStudent ? '학생' : '관리자'} 삭제`}
+          {isBulkDelete 
+            ? `${bulkDeleteType === 'student' ? '학생' : '관리자'} 일괄 삭제`
+            : `${isStudent ? '학생' : '관리자'} 삭제`
+          }
         </h3>
         <p className="text-gray-600 dark:text-gray-400 mb-6">
           {isBulkDelete ? (
             <>
-              정말로 선택한 <strong>{bulkDeleteCount}명</strong>의 {bulkDeleteType === 'student' ? '학생' : '관리자'}을 삭제하시겠습니까?
+              정말로 선택된 <strong>{bulkDeleteCount}명의 {bulkDeleteType === 'student' ? '학생' : '관리자'}</strong>을 삭제하시겠습니까?
               <br />이 작업은 되돌릴 수 없습니다.
             </>
           ) : (

@@ -25,18 +25,37 @@ const AttendanceRecords: React.FC = () => {
   const [unprocessedAttendanceData, setUnprocessedAttendanceData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Get saved filters from localStorage or default values
+  const getSavedFilter = (key: string, defaultValue: string) => {
+    try {
+      return localStorage.getItem(`attendanceRecords_${key}`) || defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  };
+  
+  const [startDate, setStartDate] = useState(() => getSavedFilter('startDate', new Date().toISOString().split('T')[0]));
+  const [endDate, setEndDate] = useState(() => getSavedFilter('endDate', new Date().toISOString().split('T')[0]));
   
   // Filter states
-  const [gradeFilter, setGradeFilter] = useState<string>('');
-  const [classFilter, setClassFilter] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<"late" | "absent" | "on_time" | "">('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [gradeFilter, setGradeFilter] = useState<string>(() => getSavedFilter('gradeFilter', ''));
+  const [classFilter, setClassFilter] = useState<string>(() => getSavedFilter('classFilter', ''));
+  const [statusFilter, setStatusFilter] = useState<"late" | "absent" | "on_time" | "">(() => getSavedFilter('statusFilter', '') as "late" | "absent" | "on_time" | "");
+  const [searchTerm, setSearchTerm] = useState(() => getSavedFilter('searchTerm', ''));
   
   // Sort states
   const [sortField, setSortField] = useState<string>('student_id');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
+  // Save filter to localStorage
+  const saveFilter = (key: string, value: string) => {
+    try {
+      localStorage.setItem(`attendanceRecords_${key}`, value);
+    } catch (error) {
+      console.warn('Failed to save filter to localStorage:', error);
+    }
+  };
   
   // Modal states
   const [selectedStudent, setSelectedStudent] = useState<StudentAttendance | null>(null);
@@ -90,32 +109,34 @@ const AttendanceRecords: React.FC = () => {
       console.log('- 미처리 출결 응답:', unprocessedResponse.success, unprocessedResponse.data?.length);
 
       if (studentsResponse.success && studentsResponse.data) {
-        const dateRangeAttendanceData = dateRangeAttendanceResponse.success ? dateRangeAttendanceResponse.data?.data || [] : [];
-        const historicalAttendanceData = historicalAttendanceResponse.success ? historicalAttendanceResponse.data?.data || [] : [];
+        const dateRangeAttendanceData = dateRangeAttendanceResponse.success ? 
+          (dateRangeAttendanceResponse.data?.data || dateRangeAttendanceResponse.data || []) : [];
+        const historicalAttendanceData = historicalAttendanceResponse.success ? 
+          (historicalAttendanceResponse.data?.data || historicalAttendanceResponse.data || []) : [];
         const unprocessedAttendanceData = unprocessedResponse.success ? unprocessedResponse.data || [] : [];
         
         console.log('처리할 데이터:');
-        console.log('- 기간별 출결 데이터:', dateRangeAttendanceData.length, '건');
-        console.log('- 기간별 출결 샘플:', dateRangeAttendanceData.slice(0, 3).map((r: any) => ({
-          date: r.date, 
-          status: r.status, 
-          student: r.User?.name,
-          student_id: r.User?.student_id
-        })));
+        console.log('- 기간별 출결 데이터:', Array.isArray(dateRangeAttendanceData) ? dateRangeAttendanceData.length : 0, '건');
+        console.log('- 기간별 출결 샘플:', Array.isArray(dateRangeAttendanceData) ? 
+          dateRangeAttendanceData.slice(0, 3).map((r: any) => ({
+            date: r.date, 
+            status: r.status, 
+            student: r.User?.name,
+            student_id: r.User?.student_id
+          })) : []);
         
         const studentsWithAttendance: StudentAttendance[] = studentsResponse.data.map((student: any) => {
-          const studentRangeRecords = dateRangeAttendanceData.filter((record: any) => 
-            record.User?.id === student.id
-          );
+          const studentRangeRecords = Array.isArray(dateRangeAttendanceData) ? 
+            dateRangeAttendanceData.filter((record: any) => record.User?.id === student.id) : [];
           
           console.log(`학생 ${student.name}(${student.student_id})의 기간별 기록:`, studentRangeRecords.length, '건');
 
-          const studentHistoricalRecords = historicalAttendanceData.filter((record: any) => 
-            record.User?.id === student.id
-          );
+          const studentHistoricalRecords = Array.isArray(historicalAttendanceData) ? 
+            historicalAttendanceData.filter((record: any) => record.User?.id === student.id) : [];
 
           // 미처리 출결에서 해당 학생 찾기
-          const unprocessedStudent = unprocessedAttendanceData.find(u => u.student.id === student.id);
+          const unprocessedStudent = Array.isArray(unprocessedAttendanceData) ? 
+            unprocessedAttendanceData.find(u => u.student?.id === student.id) : null;
 
           // Calculate overall status for the date range
           let todayStatus: 'present' | 'late' | 'absent' | 'partial' = 'absent';
@@ -322,7 +343,8 @@ const AttendanceRecords: React.FC = () => {
     const { todayStatus, todayLateMinutes, todayPresentPeriods } = student;
     
     // 미처리 출결에서 해당 학생 찾기
-    const unprocessedStudent = unprocessedAttendanceData?.find(u => u.student.id === student.id);
+    const unprocessedStudent = Array.isArray(unprocessedAttendanceData) ? 
+      unprocessedAttendanceData.find(u => u.student?.id === student.id) : null;
     
     const badges = {
       present: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200',
@@ -450,7 +472,10 @@ const AttendanceRecords: React.FC = () => {
             <input
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                saveFilter('startDate', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             />
           </div>
@@ -460,7 +485,10 @@ const AttendanceRecords: React.FC = () => {
             <input
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                saveFilter('endDate', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             />
           </div>
@@ -471,7 +499,10 @@ const AttendanceRecords: React.FC = () => {
               type="text"
               placeholder="이름, 학번으로 검색..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                saveFilter('searchTerm', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             />
           </div>
@@ -480,7 +511,10 @@ const AttendanceRecords: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">학년</label>
             <select
               value={gradeFilter}
-              onChange={(e) => setGradeFilter(e.target.value)}
+              onChange={(e) => {
+                setGradeFilter(e.target.value);
+                saveFilter('gradeFilter', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="">전체</option>
@@ -494,7 +528,10 @@ const AttendanceRecords: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">반</label>
             <select
               value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
+              onChange={(e) => {
+                setClassFilter(e.target.value);
+                saveFilter('classFilter', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="">전체</option>
@@ -508,7 +545,10 @@ const AttendanceRecords: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">출결상태</label>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as "late" | "absent" | "on_time" | "")}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as "late" | "absent" | "on_time" | "");
+                saveFilter('statusFilter', e.target.value);
+              }}
               className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="">전체</option>
@@ -541,6 +581,14 @@ const AttendanceRecords: React.FC = () => {
                 const today = new Date().toISOString().split('T')[0];
                 setStartDate(today);
                 setEndDate(today);
+                
+                // Clear localStorage
+                saveFilter('searchTerm', '');
+                saveFilter('gradeFilter', '');
+                saveFilter('classFilter', '');
+                saveFilter('statusFilter', '');
+                saveFilter('startDate', today);
+                saveFilter('endDate', today);
               }}
               className="px-3 sm:px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors text-xs sm:text-sm self-start sm:self-auto"
             >

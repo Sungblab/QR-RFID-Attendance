@@ -167,6 +167,8 @@ const RFIDManagement: React.FC = () => {
 
   // RFID 스캔 시작 (Web Serial API)
   const startScan = () => {
+    console.log('[DEBUG] RFIDManagement - 스캔 시작, isConnected:', isConnected);
+    
     if (!isConnected) {
       alert('Arduino를 먼저 연결하세요.');
       return;
@@ -185,8 +187,12 @@ const RFIDManagement: React.FC = () => {
       }
       
       try {
+        console.log('[DEBUG] RFIDManagement - RFID 체크 시도...');
         const result = await webSerialManager.checkRFIDTag();
+        console.log('[DEBUG] RFIDManagement - RFID 체크 결과:', result);
+        
         if (result.hasNewTag && result.uid) {
+          console.log('[DEBUG] RFIDManagement - ✅ 태그 발견:', result.uid);
           setScannedCard(result.uid);
           setManualCardId(result.uid);
           setIsScanning(false);
@@ -194,7 +200,7 @@ const RFIDManagement: React.FC = () => {
           clearInterval(interval);
         }
       } catch (err) {
-        console.error('RFID 스캔 오류:', err);
+        console.error('[DEBUG] RFIDManagement - RFID 스캔 오류:', err);
         setError('RFID 스캔 중 오류가 발생했습니다.');
         setIsScanning(false);
         scanActive = false;
@@ -306,7 +312,7 @@ const RFIDManagement: React.FC = () => {
 
     try {
       const response = await userApi.updateStudent(student.id, {
-        rfid_card_id: undefined
+        rfid_card_id: null
       });
 
       if (response.success) {

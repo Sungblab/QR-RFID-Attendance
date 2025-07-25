@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import api, { holidayApi } from '../../../../services/api';
 import { Html5Qrcode } from 'html5-qrcode';
 import { webSerialManager } from '../../../../utils/webSerial';
+import checkedSound from '../../../../assets/sound/checked.mp3';
 
 // html5-qrcode 스타일 오버라이드
 const qrReaderStyles = `
@@ -86,13 +87,58 @@ const QRRFIDReader: React.FC = () => {
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [showConnection, setShowConnection] = useState(false);
+  const [readerMode, setReaderMode] = useState<'both' | 'qr' | 'rfid'>('both'); // 리더 모드 선택
+  const [soundEnabled, setSoundEnabled] = useState(true); // 사운드 활성화 상태
   const qrReaderRef = useRef<Html5Qrcode | null>(null);
   const qrReaderElementRef = useRef<HTMLDivElement>(null);
   const lastScanTimeRef = useRef<number>(0);
+  const isProcessingQR = useRef<boolean>(false);
   
-  // RFID 폴링을 위한 ref
-  const rfidPollingInterval = useRef<number | null>(null);
-  const [isRfidPolling, setIsRfidPolling] = useState(false);
+  // RFID 이벤트 리스너를 위한 ref
+  const rfidListenerRef = useRef<((data: any) => void) | null>(null);
+  const [isRfidListening, setIsRfidListening] = useState(false);
+
+  // 사운드 재생을 위한 ref
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // 사운드 재생 함수
+  const playSuccessSound = () => {
+    if (!soundEnabled) return; // 사운드가 비활성화되면 재생하지 않음
+    
+    try {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0; // 처음부터 재생
+        audioRef.current.volume = 0.7; // 볼륨 설정 (0.0 ~ 1.0)
+        audioRef.current.play().catch(error => {
+          // 자동재생 정책으로 인한 실패는 조용히 처리
+          if (error.name !== 'NotAllowedError') {
+            console.warn('사운드 재생 실패:', error);
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('사운드 재생 중 오류:', error);
+    }
+  };
+
+  // 컴포넌트 마운트 시 오디오 초기화
+  useEffect(() => {
+    if (audioRef.current) {
+      // 브라우저 자동재생 정책 대응: 사용자 상호작용 시 오디오 활성화
+      const enableAudio = () => {
+        if (audioRef.current) {
+          audioRef.current.load();
+        }
+      };
+      
+      // 첫 클릭 시 오디오 활성화
+      document.addEventListener('click', enableAudio, { once: true });
+      
+      return () => {
+        document.removeEventListener('click', enableAudio);
+      };
+    }
+  }, []);
 
   // 실시간 출결 기록 추가 (프론트엔드에서만 관리)
   const addRecentRecord = (studentData: StudentData, status: 'on_time' | 'late' | 'error', method: 'qr' | 'rfid' = 'qr', errorMessage?: string) => {
@@ -487,6 +533,13 @@ const QRRFIDReader: React.FC = () => {
         (decodedText) => {
           // QR 코드 인식 성공
           console.log('🎉 QR 코드 인식 성공:', decodedText);
+          
+          // 처리 중이면 무시
+          if (isProcessingQR.current) {
+            console.log('QR 처리 중이므로 무시');
+            return;
+          }
+          
           handleQRScanResult(decodedText);
         },
         () => {
@@ -537,10 +590,14 @@ const QRRFIDReader: React.FC = () => {
   // QR코드 스캔 결과 처리
   const handleQRScanResult = async (qrText: string) => {
     try {
-      // 연속 스캔 방지 (3초 쿨다운)
+      // 처리 중 플래그 설정
+      isProcessingQR.current = true;
+      
+      // 연속 스캔 방지 (5초 쿨다운)
       const now = Date.now();
-      if (now - lastScanTimeRef.current < 3000) {
+      if (now - lastScanTimeRef.current < 5000) {
         console.log('QR 스캔 쿨다운 중...');
+        isProcessingQR.current = false;
         return;
       }
       lastScanTimeRef.current = now;
@@ -553,10 +610,28 @@ const QRRFIDReader: React.FC = () => {
         // JSON 형태로 파싱 시도 (학생이 생성한 QR 코드)
         parsedData = JSON.parse(qrText);
         
-        // 학생 QR 코드 형식 검증
-        if (parsedData.student_id && parsedData.name) {
+        // 학생 QR 코드 형식 검증 (student_id 또는 name 중 하나라도 있으면 처리)
+        if (parsedData.student_id || parsedData.name) {
+          // student_id가 없는 경우 name으로 대체
+          if (!parsedData.student_id && parsedData.name) {
+            parsedData.student_id = parsedData.name; // 임시로 name을 student_id로 사용
+          }
           // 학생이 보여주는 QR 코드인 경우
           await handleStudentQRScan(parsedData);
+          
+          // QR 처리 후 잠시 카메라 중지하여 RFID 리소스 확보
+          if (isScanning) {
+            await stopCamera();
+            setTimeout(async () => {
+              isProcessingQR.current = false;
+              // 자동으로 카메라 재시작
+              await startCamera();
+            }, 2000); // 2초 후 재시작
+          } else {
+            setTimeout(() => {
+              isProcessingQR.current = false;
+            }, 3000);
+          }
           return;
         }
       } catch {
@@ -580,6 +655,11 @@ const QRRFIDReader: React.FC = () => {
         type: 'error', 
         text: error instanceof Error ? error.message : 'QR 코드 처리 중 오류가 발생했습니다.' 
       });
+    } finally {
+      // 항상 처리 플래그 해제
+      setTimeout(() => {
+        isProcessingQR.current = false;
+      }, 3000);
     }
   };
 
@@ -638,6 +718,9 @@ const QRRFIDReader: React.FC = () => {
         });
         // 프론트엔드 리스트에 추가
         addRecentRecord(studentData, response.data.status);
+        
+        // 성공 사운드 재생
+        playSuccessSound();
       } else {
         setMessage({ type: 'error', text: response.data.message });
         addRecentRecord(studentData, 'error', 'qr', response.data.message);
@@ -654,11 +737,15 @@ const QRRFIDReader: React.FC = () => {
 
   // RFID 태그 처리 함수
   const handleRFIDTag = async (rfidCardId: string) => {
+    console.log('[DEBUG] handleRFIDTag 시작 - rfidCardId:', rfidCardId);
+    console.log('[DEBUG] attendanceStatus:', attendanceStatus);
+    
     try {
       setIsLoading(true);
 
       // 출결 가능 여부 체크
       if (!attendanceStatus.canAttend) {
+        console.log('[DEBUG] 출결 불가능 - canAttend:', attendanceStatus.canAttend);
         let errorMsg = '';
         if (attendanceStatus.isHoliday) {
           errorMsg = `오늘은 ${attendanceStatus.holidayName}입니다. 출결 체크를 할 수 없습니다.`;
@@ -697,13 +784,17 @@ const QRRFIDReader: React.FC = () => {
       }
 
       // RFID 출결 처리 API 호출
+      console.log('[DEBUG] API 호출 시작 - rfidCardId:', rfidCardId);
       const response = await api.post('/attendance/rfid-tag', {
         rfid_uid: rfidCardId,
         reader_location: 'admin-reader',
         timestamp: new Date().toISOString()
       });
+      
+      console.log('[DEBUG] API 응답:', response.data);
 
       if (response.data.success) {
+        console.log('[DEBUG] API 성공 - 학생 정보:', response.data.student);
         const statusText = response.data.status === 'on_time' ? '정시' : '지각';
         const student = response.data.student;
         
@@ -721,8 +812,14 @@ const QRRFIDReader: React.FC = () => {
           number: student.number,
           timestamp: Date.now()
         };
+        console.log('[DEBUG] addRecentRecord 호출 - studentData:', studentData, 'status:', response.data.status);
         addRecentRecord(studentData, response.data.status, 'rfid');
+        console.log('[DEBUG] addRecentRecord 완료');
+        
+        // 성공 사운드 재생
+        playSuccessSound();
       } else {
+        console.log('[DEBUG] API 실패 - 메시지:', response.data.message);
         setMessage({ type: 'error', text: response.data.message });
         
         // 오류 발생 시에도 가능하면 학생 정보를 찾아서 기록에 추가
@@ -736,12 +833,59 @@ const QRRFIDReader: React.FC = () => {
             number: student.number || 0,
             timestamp: Date.now()
           };
+          console.log('[DEBUG] API 실패 시 addRecentRecord 호출 - studentData:', studentData);
           addRecentRecord(studentData, 'error', 'rfid', response.data.message);
+          console.log('[DEBUG] API 실패 시 addRecentRecord 완료');
+        } else {
+          // 학생 정보가 없으면 RFID로 학생 찾기 시도
+          console.log('[DEBUG] 학생 정보 없음, RFID로 학생 찾기 시도');
+          try {
+            const userResponse = await api.get(`/rfid/card-info/${rfidCardId}`);
+            if (userResponse.data.success && userResponse.data.data.user) {
+              const user = userResponse.data.data.user;
+              const studentData = {
+                student_id: user.student_id,
+                name: user.name,
+                grade: user.grade,
+                class: user.class,
+                number: user.number,
+                timestamp: Date.now()
+              };
+              console.log('[DEBUG] RFID로 찾은 학생 정보로 addRecentRecord 호출:', studentData);
+              addRecentRecord(studentData, 'error', 'rfid', response.data.message);
+              console.log('[DEBUG] RFID로 찾은 학생 정보 addRecentRecord 완료');
+            } else {
+              console.log('[DEBUG] RFID로 학생을 찾을 수 없음');
+              // 그래도 RFID ID로라도 기록 추가
+              const unknownStudentData = {
+                student_id: 'unknown',
+                name: `RFID: ${rfidCardId}`,
+                grade: 0,
+                class: 0,
+                number: 0,
+                timestamp: Date.now()
+              };
+              addRecentRecord(unknownStudentData, 'error', 'rfid', response.data.message);
+            }
+          } catch (findError) {
+            console.warn('[DEBUG] RFID로 학생 찾기 실패:', findError);
+            // 그래도 RFID ID로라도 기록 추가
+            const unknownStudentData = {
+              student_id: 'unknown',
+              name: `RFID: ${rfidCardId}`,
+              grade: 0,
+              class: 0,
+              number: 0,
+              timestamp: Date.now()
+            };
+            addRecentRecord(unknownStudentData, 'error', 'rfid', response.data.message);
+          }
         }
       }
     } catch (error: unknown) {
-      console.error('RFID 태그 처리 실패:', error);
+      console.error('[DEBUG] RFID 태그 처리 실패:', error);
       const errorMsg = (error as unknown as { response?: { data?: { message?: string } } }).response?.data?.message || 'RFID 태그 처리에 실패했습니다.';
+      console.log('[DEBUG] 오류 메시지:', errorMsg);
       setMessage({ type: 'error', text: errorMsg });
       
       // 일반적인 오류 정보로 기록 추가
@@ -847,66 +991,87 @@ const QRRFIDReader: React.FC = () => {
   };
   */
 
-  // RFID 폴링 시작 (Web Serial API)
-  const startRfidPolling = () => {
+  // RFID 이벤트 리스너 시작
+  const startRfidListener = () => {
+    console.log('[DEBUG] startRfidListener 호출 - arduinoConnected:', arduinoConnected, 'isRfidListening:', isRfidListening);
+    
     if (!arduinoConnected) {
+      console.log('[DEBUG] Arduino 연결되지 않음');
       setMessage({ type: 'error', text: 'Arduino가 연결되지 않았습니다. 먼저 Arduino를 연결해주세요.' });
       return;
     }
 
-    if (isRfidPolling) {
-      return; // 이미 폴링 중
+    if (isRfidListening) {
+      console.log('[DEBUG] 이미 리스닝 중');
+      return; // 이미 리스닝 중
     }
 
-    setIsRfidPolling(true);
-    console.log('[RFID] 폴링 시작');
-
-    rfidPollingInterval.current = setInterval(async () => {
+    // RFID 이벤트 핸들러 생성
+    const rfidEventHandler = async (data: any) => {
       try {
-        const result = await webSerialManager.checkRFIDTag();
-        if (result.hasNewTag && result.uid) {
-          console.log(`[RFID] 새 태그 감지: ${result.uid}`);
-          await handleRFIDTag(result.uid);
+        if (data.type === 'RFID_TAG' && data.card_id) {
+          console.log(`[이벤트] ✅ RFID 태그 감지: ${data.card_id}`);
+          await handleRFIDTag(data.card_id);
         }
       } catch (error) {
-        console.error('[RFID] 폴링 중 오류:', error);
-        // 연결 오류 시 폴링 중지
-        if (error instanceof Error && error.message.includes('연결')) {
-          stopRfidPolling();
-          setMessage({ type: 'error', text: 'Arduino 연결이 끊어졌습니다.' });
-        }
+        console.error('[이벤트] RFID 처리 오류:', error);
       }
-    }, 1000); // 1초마다 체크
+    };
+
+    // 리스너 등록
+    rfidListenerRef.current = rfidEventHandler;
+    webSerialManager.addDataListener(rfidEventHandler);
+    setIsRfidListening(true);
+    console.log('[RFID] 이벤트 리스너 시작');
   };
 
-  // RFID 폴링 중지
-  const stopRfidPolling = () => {
-    if (rfidPollingInterval.current) {
-      clearInterval(rfidPollingInterval.current);
-      rfidPollingInterval.current = null;
+  // RFID 이벤트 리스너 중지
+  const stopRfidListener = () => {
+    if (rfidListenerRef.current) {
+      webSerialManager.removeDataListener(rfidListenerRef.current);
+      rfidListenerRef.current = null;
     }
-    setIsRfidPolling(false);
-    console.log('[RFID] 폴링 중지');
+    setIsRfidListening(false);
+    console.log('[RFID] 이벤트 리스너 중지');
   };
 
-  // Arduino 연결 상태 변경 시 RFID 폴링 자동 시작/중지
+  // Arduino 연결 상태 변경 시 RFID 이벤트 리스너 자동 시작/중지
   useEffect(() => {
-    if (arduinoConnected && !isRfidPolling) {
-      // Arduino 연결되면 자동으로 RFID 폴링 시작
-      setTimeout(() => {
-        startRfidPolling();
-      }, 1000); // 1초 후 시작
-    } else if (!arduinoConnected && isRfidPolling) {
-      // Arduino 연결 해제되면 폴링 중지
-      stopRfidPolling();
+    console.log('[DEBUG] useEffect 트리거 - arduinoConnected:', arduinoConnected, 'isRfidListening:', isRfidListening);
+    
+    if (arduinoConnected && !isRfidListening && (readerMode === 'both' || readerMode === 'rfid')) {
+      // Arduino 연결되고 RFID 모드가 활성화되면 자동으로 RFID 이벤트 리스너 시작
+      console.log('[DEBUG] Arduino 연결됨, 1초 후 이벤트 리스너 시작 예약');
+      const timer = setTimeout(() => {
+        console.log('[DEBUG] 이벤트 리스너 시작 타이머 실행');
+        startRfidListener();
+      }, 1000); // 1초 후 시작 (webSerial에서 이미 리스너가 시작되었을 것)
+      
+      return () => {
+        console.log('[DEBUG] useEffect cleanup - 타이머 해제');
+        clearTimeout(timer);
+      };
+    } else if (!arduinoConnected && isRfidListening) {
+      // Arduino 연결 해제되면 이벤트 리스너 중지
+      console.log('[DEBUG] Arduino 연결 해제됨, 이벤트 리스너 중지');
+      stopRfidListener();
     }
-  }, [arduinoConnected]);
+  }, [arduinoConnected, isRfidListening]); // readerMode 의존성 제거
+  
+  // 리더 모드 변경 시 별도 처리
+  useEffect(() => {
+    if (readerMode === 'qr' && isRfidListening) {
+      // QR 전용 모드로 변경되면 RFID 리스너 중지
+      console.log('[DEBUG] QR 전용 모드로 변경, RFID 리스너 중지');
+      stopRfidListener();
+    }
+  }, [readerMode]);
 
   // 컴포넌트 언마운트 시 정리
   useEffect(() => {
     return () => {
       stopCamera();
-      stopRfidPolling();
+      stopRfidListener();
       // Arduino 연결이 있으면 해제
       if (arduinoConnected) {
         webSerialManager.disconnect().catch(error => {
@@ -949,6 +1114,13 @@ const QRRFIDReader: React.FC = () => {
   return (
     <>
       <style>{qrReaderStyles}</style>
+      {/* 출결 완료 사운드 */}
+      <audio 
+        ref={audioRef} 
+        src={checkedSound}
+        preload="auto"
+        style={{ display: 'none' }}
+      />
       <div className="space-y-4 sm:space-y-6">
       {/* 상태 정보 헤더 */}
       <div className="bg-white dark:bg-gray-800 shadow rounded-xl sm:rounded-lg">
@@ -1008,13 +1180,95 @@ const QRRFIDReader: React.FC = () => {
         </div>
       </div>
 
+      {/* 리더 모드 선택 */}
+      <div className="bg-white dark:bg-gray-800 shadow rounded-xl sm:rounded-lg">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-base sm:text-lg font-medium text-gray-900 dark:text-gray-100">리더 모드</h3>
+        </div>
+        <div className="p-4 sm:p-6">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                setReaderMode('both');
+                // RFID 모드에서 both로 변경 시 RFID 리스너 다시 시작
+                if (readerMode === 'qr' && arduinoConnected && !isRfidListening) {
+                  setTimeout(() => startRfidListener(), 500);
+                }
+              }}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                readerMode === 'both'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              QR + RFID 동시
+            </button>
+            <button
+              onClick={() => {
+                setReaderMode('qr');
+                // QR 전용 모드로 변경 시 RFID 리스너만 중지, 카메라는 유지
+              }}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                readerMode === 'qr'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              QR만
+            </button>
+            <button
+              onClick={() => {
+                setReaderMode('rfid');
+                // RFID 전용 모드로 변경 시 카메라만 중지, RFID는 유지
+                if (isScanning) {
+                  stopCamera();
+                }
+                if (arduinoConnected && !isRfidListening) {
+                  setTimeout(() => startRfidListener(), 500);
+                }
+              }}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                readerMode === 'rfid'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              RFID만
+            </button>
+          </div>
+          <div className="flex justify-between items-center mt-3">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              리소스 충돌 시 개별 모드를 사용하세요
+            </p>
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                soundEnabled
+                  ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+              }`}
+            >
+              {soundEnabled ? '🔊' : '🔇'}
+              <span>{soundEnabled ? '사운드 ON' : '사운드 OFF'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
       {/* 왼쪽: 카메라 및 리더기 */}
       <div className="space-y-4 sm:space-y-6">
         {/* 웹캠 카메라 */}
         <div className="bg-white dark:bg-gray-800 shadow rounded-xl sm:rounded-lg">
           <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-base sm:text-lg font-medium text-gray-900 dark:text-gray-100">QR코드 스캔</h3>
+            <div className="flex justify-between items-center">
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 dark:text-gray-100">QR코드 스캔</h3>
+              {readerMode === 'rfid' && (
+                <span className="text-xs text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/20 px-2 py-1 rounded">
+                  RFID 전용 모드
+                </span>
+              )}
+            </div>
           </div>
           <div className="p-4 sm:p-6">
             {/* 카메라 선택 */}
@@ -1104,7 +1358,14 @@ const QRRFIDReader: React.FC = () => {
         <div className="bg-white dark:bg-gray-800 shadow rounded-xl sm:rounded-lg">
           <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex justify-between items-center">
-              <h3 className="text-base sm:text-lg font-medium text-gray-900 dark:text-gray-100">RFID 리더기</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-medium text-gray-900 dark:text-gray-100">RFID 리더기</h3>
+                {readerMode === 'qr' && (
+                  <span className="text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/20 px-2 py-1 rounded">
+                    QR 전용 모드
+                  </span>
+                )}
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowConnection(!showConnection)}
@@ -1219,18 +1480,18 @@ const QRRFIDReader: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2 sm:space-x-3">
                 <div className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${
-                  arduinoConnected ? (isRfidPolling ? 'bg-green-400 animate-pulse' : 'bg-yellow-400') : 'bg-red-400'
+                  arduinoConnected ? (isRfidListening ? 'bg-green-400 animate-pulse' : 'bg-yellow-400') : 'bg-red-400'
                 }`}></div>
                 <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                   {arduinoConnected ? 
-                    (isRfidPolling ? 'RFID 태그 감지 중' : '리더기 연결됨') : 
+                    (isRfidListening ? 'RFID 태그 감지 중' : '리더기 연결됨') : 
                     '리더기 연결 안됨'
                   }
                 </span>
               </div>
               <span className="text-xs text-gray-500 dark:text-gray-500">
                 Arduino {arduinoConnected ? '연결됨' : '연결 안됨'}
-                {isRfidPolling && ' (폴링 중)'}
+                {isRfidListening && ' (이벤트 수신 중)'}
               </span>
             </div>
             
@@ -1249,9 +1510,9 @@ const QRRFIDReader: React.FC = () => {
             
             <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-2">
               {arduinoConnected 
-                ? (isRfidPolling 
+                ? (isRfidListening 
                    ? 'RFID 카드를 리더기에 태그하면 자동으로 출결 처리됩니다' 
-                   : 'RFID 폴링이 시작되지 않았습니다')
+                   : 'RFID 이벤트 리스너가 시작되지 않았습니다')
                 : '위 설정에서 Arduino를 연결해주세요'
               }
             </p>

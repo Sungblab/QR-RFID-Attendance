@@ -153,7 +153,7 @@ export interface UpdateStudentRequest {
   class?: number;
   number?: number;
   student_id?: string;
-  rfid_card_id?: string;
+  rfid_card_id?: string | null;
 }
 
 export interface CreateAdminRequest {
