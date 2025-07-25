@@ -1,20 +1,20 @@
-# 🎓 Attend Class - Smart Attendance Management System
+# Attend Class - Smart Attendance Management System
 
 RFID와 QR 코드를 활용한 스마트 출석 관리 시스템
 
-## 📋 프로젝트 개요
+## 프로젝트 개요
 
 Attend Class는 학교나 교육기관에서 사용할 수 있는 현대적인 출석 관리 시스템입니다. RFID 카드와 QR 코드를 통해 학생들의 출석을 자동으로 체크하고, 웹 대시보드를 통해 출석 현황을 실시간으로 관리할 수 있습니다.
 
-## ✨ 주요 기능
+## 주요 기능
 
-### 👨‍🎓 학생 기능
+### 학생 기능
 - **QR 코드 출석**: 개인 QR 코드를 통한 간편한 출석 체크
 - **RFID 카드 출석**: RFID 카드를 리더기에 태그하여 출석
 - **출석 현황 조회**: 개인 출석 기록 및 통계 확인
 - **프로필 관리**: 개인 정보 및 비밀번호 변경
 
-### 👨‍🏫 관리자/교사 기능
+### 관리자/교사 기능
 - **실시간 출석 관리**: 실시간 출석 현황 모니터링
 - **학생 관리**: 학생 등록, 수정, 삭제
 - **RFID 카드 관리**: 학생 카드 등록 및 관리
@@ -22,14 +22,14 @@ Attend Class는 학교나 교육기관에서 사용할 수 있는 현대적인 �
 - **휴일 관리**: 공휴일 및 휴무일 설정
 - **출석 설정**: 출석 시간 및 규칙 설정
 
-### 🔧 시스템 기능
+### 시스템 기능
 - **다중 인증 방식**: RFID와 QR 코드 동시 지원
 - **실시간 알림**: 출석 체크 시 즉시 알림
 - **데이터 내보내기**: Excel 형태로 출석 데이터 내보내기
 - **보안**: JWT 기반 인증 및 권한 관리
 - **반응형 디자인**: 모바일 및 데스크톱 지원
 
-## 🏗️ 시스템 아키텍처
+## 시스템 아키텍처
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -39,7 +39,7 @@ Attend Class는 학교나 교육기관에서 사용할 수 있는 현대적인 �
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## 🛠️ 기술 스택
+## 기술 스택
 
 ### Frontend
 - **Framework**: React 19.1.0 + TypeScript
@@ -66,7 +66,7 @@ Attend Class는 학교나 교육기관에서 사용할 수 있는 현대적인 �
 - **Components**: RGB LEDs, Buzzer
 - **Libraries**: MFRC522, ArduinoJson
 
-## 📦 설치 및 실행
+## 설치 및 실행
 
 ### 사전 요구사항
 - Node.js (v18 이상)
@@ -75,8 +75,8 @@ Attend Class는 학교나 교육기관에서 사용할 수 있는 현대적인 �
 
 ### 1. 프로젝트 클론
 ```bash
-git clone https://github.com/yourusername/attend_class.git
-cd attend_class
+git clone https://github.com/Sungblab/QR-RFID-Attendance
+cd QR-RFID-Attendance
 ```
 
 ### 2. Backend 설정
@@ -113,7 +113,7 @@ npm run dev
 3. 하드웨어 연결 (README 내 핀 배치도 참조)
 4. 코드 업로드
 
-## 📱 사용법
+## 사용법
 
 ### 관리자 계정 생성
 ```bash
@@ -127,7 +127,7 @@ node utils/createAdmin.js
 3. 학생 등록 및 RFID 카드 설정
 4. 출석 리더기 연결 및 테스트
 
-## 🔧 환경 변수
+## 환경 변수
 
 ### Backend (.env)
 ```env
@@ -153,11 +153,11 @@ ARDUINO_PORT=/dev/ttyUSB0
 
 ### Frontend (.env)
 ```env
-VITE_API_URL=http://localhost:8000/api
-VITE_WS_URL=ws://localhost:8000
+VITE_API_URL=http://localhost:5000/api
+VITE_WS_URL=ws://localhost:5000
 ```
 
-## 🤝 기여 방법
+## 기여 방법
 
 1. 프로젝트를 포크합니다
 2. 기능 브랜치를 생성합니다 (`git checkout -b feature/amazing-feature`)
@@ -165,19 +165,20 @@ VITE_WS_URL=ws://localhost:8000
 4. 브랜치에 푸시합니다 (`git push origin feature/amazing-feature`)
 5. Pull Request를 생성합니다
 
-## 📄 라이선스
+## 라이선스
 
-이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+이 프로젝트는 MIT 라이선스 하에 배포됩니다. 
 
-## 📞 지원 및 문의
+## 지원 및 문의
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/attend_class/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/attend_class/discussions)
+- **Issues**: [GitHub Issues](https://github.com/Sungblab/QR-RFID-Attendance/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Sungblab/QR-RFID-Attendance/discussions)
+- **Email**: sungblab@gmail.com
 
-## 🙏 감사의 말
+## 감사의 말
 
 이 프로젝트는 교육 현장의 디지털 전환을 위해 개발되었습니다. 사용해주시고 피드백을 주시는 모든 분들께 감사드립니다.
 
 ---
 
-⭐ 이 프로젝트가 도움이 되셨다면 스타를 눌러주세요!
+이 프로젝트가 도움이 되셨다면 스타를 눌러주세요!
