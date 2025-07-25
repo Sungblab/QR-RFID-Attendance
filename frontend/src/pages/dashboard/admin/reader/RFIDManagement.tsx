@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { userApi, rfidApi, type User } from '../../../../services/api';
+import { userApi, type User } from '../../../../services/api';
+import { webSerialManager } from '../../../../utils/webSerial';
 
 interface RFIDUser extends User {
   rfid_card_id?: string;
@@ -80,56 +81,60 @@ const RFIDManagement: React.FC = () => {
     }
   };
 
-  // 포트 목록 로드
+  // 포트 목록 로드 (Web Serial API)
   const loadPorts = async () => {
     try {
-      const response = await rfidApi.getPorts();
-      if (response.success) {
-        setPorts(response.data || []);
-        const arduinoPort = response.data?.find((port: SerialPort) => 
-          port.manufacturer?.toLowerCase().includes('arduino')
-        );
-        if (arduinoPort) {
-          setSelectedPort(arduinoPort.path);
-        }
+      if (!webSerialManager.isSupported()) {
+        setError('Web Serial API가 지원되지 않습니다. Chrome, Edge, Opera 브라우저를 사용해주세요.');
+        return;
+      }
+
+      const ports = await webSerialManager.getPorts();
+      setPorts(ports);
+      
+      // Arduino 포트 자동 선택
+      const arduinoPort = ports.find(port => 
+        port.manufacturer?.toLowerCase().includes('arduino') ||
+        port.vendorId === 0x2341 || // Arduino Uno
+        port.vendorId === 0x1a86    // CH340
+      );
+      if (arduinoPort) {
+        setSelectedPort(arduinoPort.path);
       }
     } catch (err) {
       console.error('포트 로드 실패:', err);
+      setError('포트 목록을 불러올 수 없습니다.');
     }
   };
 
-  // Arduino 연결
+  // Arduino 연결 (Web Serial API)
   const connectArduino = async () => {
-    if (!selectedPort) {
-      alert('포트를 선택하세요.');
-      return;
-    }
-    
     try {
       setConnecting(true);
-      const response = await rfidApi.connect({
-        port: selectedPort,
-        baudRate: 9600
-      });
+      setError(null);
       
-      if (response.success) {
-        setIsConnected(true);
-        setError(null);
-      } else {
-        setError('Arduino 연결 실패: ' + response.message);
+      await webSerialManager.connect(9600);
+      setIsConnected(true);
+      
+      // 연결된 포트 정보 업데이트
+      const ports = await webSerialManager.getPorts();
+      setPorts(ports);
+      if (ports.length > 0) {
+        setSelectedPort(ports[0].path);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
       setError('Arduino 연결 중 오류: ' + errorMessage);
+      setIsConnected(false);
     } finally {
       setConnecting(false);
     }
   };
 
-  // Arduino 연결 해제
+  // Arduino 연결 해제 (Web Serial API)
   const disconnectArduino = async () => {
     try {
-      await rfidApi.disconnect();
+      await webSerialManager.disconnect();
       setIsConnected(false);
       setIsScanning(false);
     } catch (err) {
@@ -160,7 +165,7 @@ const RFIDManagement: React.FC = () => {
     setGeneratedCardId('');
   };
 
-  // RFID 스캔 시작
+  // RFID 스캔 시작 (Web Serial API)
   const startScan = () => {
     if (!isConnected) {
       alert('Arduino를 먼저 연결하세요.');
@@ -180,10 +185,10 @@ const RFIDManagement: React.FC = () => {
       }
       
       try {
-        const response = await rfidApi.checkTag('management');
-        if (response.hasNewTag && response.uid) {
-          setScannedCard(response.uid);
-          setManualCardId(response.uid);
+        const result = await webSerialManager.checkRFIDTag();
+        if (result.hasNewTag && result.uid) {
+          setScannedCard(result.uid);
+          setManualCardId(result.uid);
           setIsScanning(false);
           scanActive = false;
           clearInterval(interval);
@@ -250,7 +255,7 @@ const RFIDManagement: React.FC = () => {
     }
   };
 
-  // RFID 카드에 학생 정보 쓰기
+  // RFID 카드에 학생 정보 쓰기 (Web Serial API)
   const writeToCard = async () => {
     if (!selectedStudent) {
       alert('학생이 선택되지 않았습니다.');
@@ -271,13 +276,10 @@ const RFIDManagement: React.FC = () => {
     }
 
     try {
-      const response = await rfidApi.writeCard({
-        student_id: codeToWrite, // 생성된 안전한 코드를 학생 ID로 사용
-        student_name: selectedStudent.name
-      });
+      const success = await webSerialManager.writeRFIDCard(codeToWrite, selectedStudent.name);
 
-      if (response.success) {
-        alert(`RFID 카드 쓰기 명령이 전송되었습니다. 카드를 리더기에 올려주세요.\n생성된 코드: ${codeToWrite}`);
+      if (success) {
+        alert(`RFID 카드 쓰기가 성공했습니다.\n생성된 코드: ${codeToWrite}`);
         
         // 자동으로 DB에도 등록
         const updateResponse = await userApi.updateStudent(selectedStudent.id, {
@@ -288,7 +290,7 @@ const RFIDManagement: React.FC = () => {
           loadStudents(); // 학생 목록 새로고침
         }
       } else {
-        setError('RFID 카드 쓰기 실패: ' + response.message);
+        setError('RFID 카드 쓰기에 실패했습니다. 카드를 리더기에 올려주세요.');
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
@@ -361,6 +363,15 @@ const RFIDManagement: React.FC = () => {
   useEffect(() => {
     loadStudents();
     loadPorts();
+    
+    // 연결 상태 확인
+    const checkConnection = () => {
+      setIsConnected(webSerialManager.isConnected());
+    };
+    
+    const interval = setInterval(checkConnection, 1000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -400,11 +411,22 @@ const RFIDManagement: React.FC = () => {
           </div>
           
           <button
-            onClick={loadPorts}
+            onClick={async () => {
+              if (webSerialManager.isSupported()) {
+                try {
+                  await webSerialManager.requestPort();
+                  await loadPorts();
+                } catch (err) {
+                  console.error('포트 요청 실패:', err);
+                }
+              } else {
+                setError('Web Serial API가 지원되지 않습니다.');
+              }
+            }}
             disabled={isConnected}
             className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50"
           >
-            새로고침
+            포트 선택
           </button>
           
           {!isConnected ? (

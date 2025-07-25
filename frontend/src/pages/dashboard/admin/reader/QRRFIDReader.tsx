@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import api, { holidayApi, rfidApi } from '../../../../services/api';
+import api, { holidayApi } from '../../../../services/api';
 import { Html5Qrcode } from 'html5-qrcode';
+import { webSerialManager } from '../../../../utils/webSerial';
 
 // html5-qrcode 스타일 오버라이드
 const qrReaderStyles = `
@@ -207,16 +208,20 @@ const QRRFIDReader: React.FC = () => {
     }
   };
 
-  // Arduino 연결 상태 체크
+  // Arduino 연결 상태 체크 (Web Serial API)
   const checkArduinoStatus = async () => {
     try {
       setCheckingArduino(true);
-      const response = await api.get('/rfid/reader-status');
-      if (response.data.success && response.data.data) {
-        setRfidStatus(response.data.data);
-        setArduinoConnected(response.data.data.connected || false);
+      const connected = webSerialManager.isConnected();
+      setArduinoConnected(connected);
+      
+      if (connected) {
+        setRfidStatus({
+          connected: true,
+          port: 'Web Serial Port',
+          reader_info: { model: 'RC522', version: '1.0.0' }
+        });
       } else {
-        setArduinoConnected(false);
         setRfidStatus(null);
       }
     } catch (error) {
@@ -228,33 +233,28 @@ const QRRFIDReader: React.FC = () => {
     }
   };
 
-  // 사용 가능한 포트 목록 불러오기
+  // 사용 가능한 포트 목록 불러오기 (Web Serial API)
   const loadAvailablePorts = async () => {
     try {
       setIsLoadingPorts(true);
       setConnectionError(null);
       
-      const response = await rfidApi.getPorts();
+      if (!webSerialManager.isSupported()) {
+        setConnectionError('Web Serial API가 지원되지 않습니다. Chrome, Edge, Opera 브라우저를 사용해주세요.');
+        return;
+      }
+
+      const ports = await webSerialManager.getPorts();
+      setAvailablePorts(ports);
       
-      if (response.success && response.data) {
-        setAvailablePorts(response.data);
-        
-        // 현재 연결된 포트가 있으면 선택
-        if (rfidStatus?.port) {
-          setSelectedPort(rfidStatus.port);
-        }
-        // Arduino 포트 자동 감지
-        else {
-          const arduinoPort = response.data.find((port: { path: string; manufacturer?: string; pnpId?: string }) => 
-            port.manufacturer?.toLowerCase().includes('arduino') ||
-            port.pnpId?.includes('2341') // Arduino Vendor ID
-          );
-          if (arduinoPort) {
-            setSelectedPort(arduinoPort.path);
-          }
-        }
-      } else {
-        setConnectionError(response.message || '포트 목록을 불러오는데 실패했습니다.');
+      // Arduino 포트 자동 감지
+      const arduinoPort = ports.find(port => 
+        port.manufacturer?.toLowerCase().includes('arduino') ||
+        port.vendorId === 0x2341 || // Arduino Uno
+        port.vendorId === 0x1a86    // CH340
+      );
+      if (arduinoPort) {
+        setSelectedPort(arduinoPort.path);
       }
     } catch (error) {
       console.error('포트 목록 불러오기 실패:', error);
@@ -264,53 +264,51 @@ const QRRFIDReader: React.FC = () => {
     }
   };
 
-  // Arduino 연결
+  // Arduino 연결 (Web Serial API)
   const connectToArduino = async () => {
-    if (!selectedPort) {
-      alert('연결할 포트를 선택해주세요.');
-      return;
-    }
-
     try {
       setConnecting(true);
       setConnectionError(null);
       
-      const response = await rfidApi.connect({
-        port: selectedPort,
-        baudRate: parseInt(selectedBaudRate),
-        pageId: 'reader'
+      await webSerialManager.connect(parseInt(selectedBaudRate));
+      setArduinoConnected(true);
+      
+      // 연결된 포트 정보 업데이트
+      const ports = await webSerialManager.getPorts();
+      setAvailablePorts(ports);
+      if (ports.length > 0) {
+        setSelectedPort(ports[0].path);
+      }
+      
+      // RFID 상태 업데이트
+      setRfidStatus({
+        connected: true,
+        port: 'Web Serial Port',
+        reader_info: { model: 'RC522', version: '1.0.0' }
       });
       
-      if (response.success) {
-        alert(`Arduino 연결 성공: ${selectedPort}`);
-        await checkArduinoStatus(); // 상태 새로고침
-        // setShowConnection(false); // 연결 패널 닫기 - 이 부분은 사용하지 않음
-      } else {
-        setConnectionError(response.message || 'Arduino 연결에 실패했습니다.');
-      }
+      alert('Arduino 연결 성공');
     } catch (error: unknown) {
       console.error('Arduino 연결 실패:', error);
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
       setConnectionError(errorMessage);
+      setArduinoConnected(false);
     } finally {
       setConnecting(false);
     }
   };
 
-  // Arduino 연결 해제
+  // Arduino 연결 해제 (Web Serial API)
   const disconnectFromArduino = async () => {
     try {
       setDisconnecting(true);
       setConnectionError(null);
       
-      const response = await rfidApi.disconnect();
+      await webSerialManager.disconnect();
+      setArduinoConnected(false);
+      setRfidStatus(null);
       
-      if (response.success) {
-        alert('Arduino 연결이 해제되었습니다.');
-        await checkArduinoStatus(); // 상태 새로고침
-      } else {
-        setConnectionError('Arduino 연결 해제에 실패했습니다.');
-      }
+      alert('Arduino 연결이 해제되었습니다.');
     } catch (error: unknown) {
       console.error('Arduino 연결 해제 실패:', error);
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
@@ -329,8 +327,8 @@ const QRRFIDReader: React.FC = () => {
     checkArduinoStatus();
     loadAvailablePorts();
     
-    // 30초마다 Arduino 상태 체크
-    const statusInterval = setInterval(checkArduinoStatus, 30000);
+    // 5초마다 Arduino 상태 체크 (Web Serial API는 빠르게 체크 가능)
+    const statusInterval = setInterval(checkArduinoStatus, 5000);
     return () => clearInterval(statusInterval);
   }, []);
 
@@ -849,7 +847,7 @@ const QRRFIDReader: React.FC = () => {
   };
   */
 
-  // RFID 폴링 시작
+  // RFID 폴링 시작 (Web Serial API)
   const startRfidPolling = () => {
     if (!arduinoConnected) {
       setMessage({ type: 'error', text: 'Arduino가 연결되지 않았습니다. 먼저 Arduino를 연결해주세요.' });
@@ -865,10 +863,10 @@ const QRRFIDReader: React.FC = () => {
 
     rfidPollingInterval.current = setInterval(async () => {
       try {
-        const response = await rfidApi.checkTag('reader');
-        if (response.hasNewTag && response.uid) {
-          console.log(`[RFID] 새 태그 감지: ${response.uid}`);
-          await handleRFIDTag(response.uid);
+        const result = await webSerialManager.checkRFIDTag();
+        if (result.hasNewTag && result.uid) {
+          console.log(`[RFID] 새 태그 감지: ${result.uid}`);
+          await handleRFIDTag(result.uid);
         }
       } catch (error) {
         console.error('[RFID] 폴링 중 오류:', error);
@@ -911,7 +909,7 @@ const QRRFIDReader: React.FC = () => {
       stopRfidPolling();
       // Arduino 연결이 있으면 해제
       if (arduinoConnected) {
-        rfidApi.disconnect().catch(error => {
+        webSerialManager.disconnect().catch(error => {
           console.error('컴포넌트 언마운트 시 Arduino 연결 해제 실패:', error);
         });
       }
@@ -1157,7 +1155,18 @@ const QRRFIDReader: React.FC = () => {
                         ))}
                       </select>
                       <button
-                        onClick={loadAvailablePorts}
+                        onClick={async () => {
+                          if (webSerialManager.isSupported()) {
+                            try {
+                              await webSerialManager.requestPort();
+                              await loadAvailablePorts();
+                            } catch (err) {
+                              console.error('포트 요청 실패:', err);
+                            }
+                          } else {
+                            setConnectionError('Web Serial API가 지원되지 않습니다.');
+                          }
+                        }}
                         disabled={isLoadingPorts || connecting || disconnecting}
                         className="px-2 py-1.5 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 text-white rounded text-xs disabled:cursor-not-allowed"
                       >
