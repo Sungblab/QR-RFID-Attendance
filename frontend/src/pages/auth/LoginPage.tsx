@@ -56,7 +56,7 @@ const LoginPage = () => {
         <div className="hidden lg:flex flex-1 bg-primary-navy dark:bg-gray-800 items-center justify-center px-4 py-8 sm:px-8 lg:px-16">
           <div className="max-w-lg text-white text-center lg:text-left">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4 lg:mb-6">
-              디지털 출결 시스템
+              완도고 출결 시스템
             </h1>
             <p className="text-base sm:text-lg lg:text-xl text-blue-100 dark:text-gray-300 mb-6 lg:mb-8 leading-relaxed">
               QR코드 스캔과 실시간 모니터링으로 
@@ -85,7 +85,7 @@ const LoginPage = () => {
             <div className="bg-white dark:bg-gray-800 py-6 px-6 sm:py-8 sm:px-8 shadow-lg dark:shadow-gray-900/50 rounded-2xl">
               <div className="text-center mb-4">
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">
-                  디지털 출결 시스템
+                  완도고 출결 시스템
                 </h2>
               </div>
 
@@ -358,13 +358,13 @@ const LoginPage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
             <div className="sm:col-span-2 lg:col-span-2">
-              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">디지털 출결 시스템</h3>
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">완도고 출결 시스템</h3>
               <p className="text-gray-300 dark:text-gray-400 mb-3 sm:mb-4 text-sm sm:text-base leading-relaxed">
                 교육 현장의 디지털 혁신을 선도하는 
                 차세대 출결 관리 솔루션입니다.
               </p>
               <div className="text-xs sm:text-sm text-gray-400 dark:text-gray-500">
-                © 2025 디지털 출결 시스템. All rights reserved.
+                © 2025 완도고 출결 시스템. All rights reserved.
               </div>
             </div>
             

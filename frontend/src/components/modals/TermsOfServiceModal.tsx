@@ -31,7 +31,7 @@ const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen, onClo
               </h3>
               <div className="text-gray-700 text-sm">
                 <p>
-                  본 약관은 디지털 출결 시스템이 제공하는 모든 서비스의 이용조건 및 절차, 
+                  본 약관은 완도고 출결 시스템이 제공하는 모든 서비스의 이용조건 및 절차, 
                   이용자와 시스템 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.
                 </p>
               </div>

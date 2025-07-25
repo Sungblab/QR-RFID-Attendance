@@ -949,7 +949,7 @@ export const rfidApi = {
   },
 
   // RFID 리더기 상태 조회
-  getReaderStatus: async (readerLocation?: string): Promise<ApiResponse<{
+  getReaderStatus: async (): Promise<ApiResponse<{
     connected: boolean;
     port: string;
     baudRate?: number;

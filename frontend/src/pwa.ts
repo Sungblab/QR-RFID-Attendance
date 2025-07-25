@@ -139,7 +139,7 @@ export const showInstallPrompt = () => {
     installNotification.querySelector('#install-btn')?.addEventListener('click', () => {
       if (deferredPrompt) {
         deferredPrompt.prompt();
-        deferredPrompt.userChoice.then((choiceResult) => {
+        deferredPrompt.userChoice.then(() => {
           deferredPrompt = null;
         });
       }

@@ -201,7 +201,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
               </div>
-              <h2 className="text-lg font-bold text-gray-800 dark:text-white">디지털 출결 시스템</h2>
+              <h2 className="text-lg font-bold text-gray-800 dark:text-white">완도고 출결 시스템</h2>
             </div>
           </div>
           
@@ -303,7 +303,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                   </svg>
                 </div>
-                <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white">디지털 출결 시스템</h1>
+                <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white">완도고 출결 시스템</h1>
               </div>
               <div className="flex items-center">
                 <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">{user.name}</span>

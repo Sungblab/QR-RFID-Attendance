@@ -298,7 +298,7 @@ const SignupPage = () => {
       </div>
       <div className="mt-6 sm:mt-8 text-center">
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          © 2025 디지털 출결 시스템. All rights reserved.
+          © 2025 완도고 출결 시스템. All rights reserved.
         </p>
       </div>
     </div>

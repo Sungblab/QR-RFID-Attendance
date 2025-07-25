@@ -85,32 +85,32 @@ const AttendanceRecords: React.FC = () => {
       
       console.log('API 응답 수신:');
       console.log('- 학생 응답:', studentsResponse.success, studentsResponse.data?.length);
-      console.log('- 기간별 출결 응답:', dateRangeAttendanceResponse.success, dateRangeAttendanceResponse.data?.length);
-      console.log('- 전체 출결 응답:', historicalAttendanceResponse.success, historicalAttendanceResponse.data?.length);
+      console.log('- 기간별 출결 응답:', dateRangeAttendanceResponse.success, dateRangeAttendanceResponse.data?.data?.length);
+      console.log('- 전체 출결 응답:', historicalAttendanceResponse.success, historicalAttendanceResponse.data?.data?.length);
       console.log('- 미처리 출결 응답:', unprocessedResponse.success, unprocessedResponse.data?.length);
 
       if (studentsResponse.success && studentsResponse.data) {
-        const dateRangeAttendanceData = dateRangeAttendanceResponse.success ? dateRangeAttendanceResponse.data || [] : [];
-        const historicalAttendanceData = historicalAttendanceResponse.success ? historicalAttendanceResponse.data || [] : [];
+        const dateRangeAttendanceData = dateRangeAttendanceResponse.success ? dateRangeAttendanceResponse.data?.data || [] : [];
+        const historicalAttendanceData = historicalAttendanceResponse.success ? historicalAttendanceResponse.data?.data || [] : [];
         const unprocessedAttendanceData = unprocessedResponse.success ? unprocessedResponse.data || [] : [];
         
         console.log('처리할 데이터:');
         console.log('- 기간별 출결 데이터:', dateRangeAttendanceData.length, '건');
-        console.log('- 기간별 출결 샘플:', dateRangeAttendanceData.slice(0, 3).map(r => ({
+        console.log('- 기간별 출결 샘플:', dateRangeAttendanceData.slice(0, 3).map((r: any) => ({
           date: r.date, 
           status: r.status, 
           student: r.User?.name,
           student_id: r.User?.student_id
         })));
         
-        const studentsWithAttendance: StudentAttendance[] = studentsResponse.data.map(student => {
-          const studentRangeRecords = dateRangeAttendanceData.filter(record => 
+        const studentsWithAttendance: StudentAttendance[] = studentsResponse.data.map((student: any) => {
+          const studentRangeRecords = dateRangeAttendanceData.filter((record: any) => 
             record.User?.id === student.id
           );
           
           console.log(`학생 ${student.name}(${student.student_id})의 기간별 기록:`, studentRangeRecords.length, '건');
 
-          const studentHistoricalRecords = historicalAttendanceData.filter(record => 
+          const studentHistoricalRecords = historicalAttendanceData.filter((record: any) => 
             record.User?.id === student.id
           );
 
@@ -132,9 +132,9 @@ const AttendanceRecords: React.FC = () => {
             }
             todayPresentPeriods = 0;
           } else {
-            const presentCount = studentRangeRecords.filter(r => r.status === 'on_time').length;
-            const lateCount = studentRangeRecords.filter(r => r.status === 'late').length;
-            const absentCount = studentRangeRecords.filter(r => r.status === 'absent').length;
+            const presentCount = studentRangeRecords.filter((r: any) => r.status === 'on_time').length;
+            const lateCount = studentRangeRecords.filter((r: any) => r.status === 'late').length;
+            const absentCount = studentRangeRecords.filter((r: any) => r.status === 'absent').length;
             const totalPresent = presentCount + lateCount;
             
             if (absentCount > 0) {
@@ -154,10 +154,10 @@ const AttendanceRecords: React.FC = () => {
             }
             
             // Calculate average late minutes for late records
-            const lateRecords = studentRangeRecords.filter(r => r.status === 'late');
+            const lateRecords = studentRangeRecords.filter((r: any) => r.status === 'late');
             if (lateRecords.length > 0) {
               let totalLateMinutes = 0;
-              lateRecords.forEach(record => {
+              lateRecords.forEach((record: any) => {
                 if (record.check_in_time) {
                   const checkIn = new Date(`2000-01-01 ${record.check_in_time}`);
                   const start = new Date(`2000-01-01 08:00:00`);
@@ -177,18 +177,18 @@ const AttendanceRecords: React.FC = () => {
           const oneMonthAgo = new Date(currentDate);
           oneMonthAgo.setMonth(currentDate.getMonth() - 1);
 
-          const weeklyRecords = studentHistoricalRecords.filter(record => {
+          const weeklyRecords = studentHistoricalRecords.filter((record: any) => {
             const recordDate = new Date(record.date);
             return recordDate >= oneWeekAgo && recordDate <= currentDate;
           });
-          const weeklyPresentCount = weeklyRecords.filter(r => r.status === 'on_time' || r.status === 'late').length;
+          const weeklyPresentCount = weeklyRecords.filter((r: any) => r.status === 'on_time' || r.status === 'late').length;
           const weeklyAttendanceRate = weeklyRecords.length > 0 ? Math.round((weeklyPresentCount / weeklyRecords.length) * 100) : 100;
 
-          const monthlyRecords = studentHistoricalRecords.filter(record => {
+          const monthlyRecords = studentHistoricalRecords.filter((record: any) => {
             const recordDate = new Date(record.date);
             return recordDate >= oneMonthAgo && recordDate <= currentDate;
           });
-          const monthlyPresentCount = monthlyRecords.filter(r => r.status === 'on_time' || r.status === 'late').length;
+          const monthlyPresentCount = monthlyRecords.filter((r: any) => r.status === 'on_time' || r.status === 'late').length;
           const monthlyAttendanceRate = monthlyRecords.length > 0 ? Math.round((monthlyPresentCount / monthlyRecords.length) * 100) : 100;
 
           return {
@@ -199,7 +199,7 @@ const AttendanceRecords: React.FC = () => {
             totalPeriods,
             weeklyAttendanceRate,
             monthlyAttendanceRate,
-            attendanceRecords: studentRangeRecords.map(record => ({
+            attendanceRecords: studentRangeRecords.map((record: any) => ({
               id: record.id,
               date: record.date,
               checkInTime: record.check_in_time,

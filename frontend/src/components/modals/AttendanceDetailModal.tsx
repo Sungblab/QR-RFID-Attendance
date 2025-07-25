@@ -58,7 +58,7 @@ const AttendanceDetailModal: React.FC<AttendanceDetailModalProps> = ({ isOpen, s
 
         if (recordsResponse.success && recordsResponse.data) {
           // 해당 학생의 데이터만 필터링
-          const studentRecords = recordsResponse.data.filter(record => 
+          const studentRecords = recordsResponse.data.data.filter((record: any) => 
             record.User?.id === student.id
           );
           setAttendanceRecords(studentRecords);
