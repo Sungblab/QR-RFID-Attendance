@@ -11,12 +11,35 @@ const { initDatabase } = require('./models');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
+// Trust proxy 설정 (프록시 서버 뒤에 있을 때)
+app.set('trust proxy', true);
+
 // 미들웨어
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+// CORS 설정 - 여러 프론트엔드 URL 허용
+const allowedOrigins = process.env.FRONTEND_URL 
+  ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+  : ['http://localhost:3000'];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // origin이 없는 경우 (서버 간 요청 등) 허용
+    if (!origin) return callback(null, true);
+    
+    // 허용된 origin 목록에 있는지 확인
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // 개발 환경에서는 모든 origin 허용
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    callback(new Error('CORS 정책에 의해 차단되었습니다'));
+  },
   credentials: true,
   optionsSuccessStatus: 200
 }));
@@ -26,19 +49,45 @@ app.use(morgan('combined', {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting (프로덕션 환경에서만)
-if (process.env.NODE_ENV === 'production') {
-  const rateLimit = require('express-rate-limit');
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15분
-    max: 100, // 최대 100 요청
-    message: {
-      error: '너무 많은 요청이 발생했습니다. 잠시 후 다시 시도하세요.',
-      retryAfter: '15분'
-    }
-  });
-  app.use('/api/', limiter);
-}
+// Rate limiting 
+const rateLimit = require('express-rate-limit');
+
+// 일반 API용 rate limiter (많이 완화)
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15분
+  max: 1000, // 최대 1000 요청 (기존 100에서 대폭 증가)
+  message: {
+    error: '너무 많은 요청이 발생했습니다. 잠시 후 다시 시도하세요.',
+    retryAfter: '15분'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // X-Forwarded-For 헤더 검증 비활성화
+  validate: {
+    xForwardedForHeader: false
+  }
+});
+
+// RFID/QR 스캔용 rate limiter (더 관대)
+const scanLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1분
+  max: 100, // 1분에 100번 스캔 가능
+  message: {
+    error: '스캔 요청이 너무 많습니다. 잠시 후 다시 시도하세요.',
+    retryAfter: '1분'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: false
+  }
+});
+
+// Rate limiter 적용
+app.use('/api/', generalLimiter);
+app.use('/api/v1/attendance/qr-scan', scanLimiter);
+app.use('/api/v1/attendance/rfid-tag', scanLimiter);
+app.use('/api/v1/rfid/check-tag', scanLimiter);
 
 // Swagger UI (개발/스테이징 환경에서만)
 if (process.env.NODE_ENV !== 'production') {

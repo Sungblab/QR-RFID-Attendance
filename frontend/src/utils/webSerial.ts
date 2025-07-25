@@ -208,19 +208,34 @@ class WebSerialManager {
     }
 
     try {
-      // Arduino에 RFID 확인 명령 전송
-      await this.write('CHECK_RFID');
-      
-      // 응답 대기 (최대 1초)
+      // Arduino는 자동으로 RFID 태그를 감지하므로 명령 전송 없이 응답만 읽기
       const timeout = new Promise<null>((resolve) => 
-        setTimeout(() => resolve(null), 1000)
+        setTimeout(() => resolve(null), 500)
       );
       
       const response = await Promise.race([this.readLine(), timeout]);
       
-      if (response && response.startsWith('RFID:')) {
-        const uid = response.replace('RFID:', '').trim();
-        return { hasNewTag: true, uid };
+      if (response) {
+        try {
+          // JSON 파싱 시도
+          const jsonData = JSON.parse(response);
+          
+          // RFID_TAG 타입이고 card_id가 있으면 새 태그
+          if (jsonData.type === 'RFID_TAG' && jsonData.card_id) {
+            return { hasNewTag: true, uid: jsonData.card_id };
+          }
+          
+          // 다른 타입의 메시지는 무시
+          return { hasNewTag: false };
+          
+        } catch (parseError) {
+          console.error('JSON 파싱 실패:', parseError);
+          // 기존 RFID: 형식도 지원
+          if (response.startsWith('RFID:')) {
+            const uid = response.replace('RFID:', '').trim();
+            return { hasNewTag: true, uid };
+          }
+        }
       }
       
       return { hasNewTag: false };
