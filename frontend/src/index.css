@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    
+    /* Primary Colors */
+    --primary-navy: #1e40af;
+    --primary-blue: #3b82f6;
+    --primary-light: #dbeafe;
+    
+    /* Gray Scale */
+    --gray-50: #f8fafc;
+    --gray-200: #e2e8f0;
+    --gray-500: #64748b;
+    --gray-800: #1e293b;
+    --white: #ffffff;
+    
+    /* Status Colors */
+    --success: #059669;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --info: #0284c7;
+    
+    /* Text Colors */
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+    --text-white: #ffffff;
+  }
+  
+  /* Dark mode colors (will be applied by ThemeContext) */
+  .dark {
+    /* These will be overridden by ThemeContext dynamically */
+  }
+  
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--gray-50);
+    color: var(--text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  
+  /* Smooth transitions for theme changes */
+  * {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: 200ms;
+    transition-timing-function: ease;
+  }
+}

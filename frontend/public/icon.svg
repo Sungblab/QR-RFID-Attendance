@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- 배경 -->
+  <rect width="512" height="512" fill="#3b82f6" rx="64"/>
+  
+  <!-- 체크마크 아이콘 -->
+  <g transform="translate(128, 128)">
+    <!-- 체크박스 배경 -->
+    <rect x="0" y="0" width="256" height="256" fill="white" rx="32"/>
+    
+    <!-- 체크마크 -->
+    <path d="M64 128 L112 176 L192 96" 
+          stroke="#10b981" 
+          stroke-width="24" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" 
+          fill="none"/>
+  </g>
+  
+  <!-- 하단 점들 (출석부 표시) -->
+  <g fill="white" opacity="0.8">
+    <circle cx="150" cy="400" r="12"/>
+    <circle cx="190" cy="400" r="12"/>
+    <circle cx="230" cy="400" r="12"/>
+    <circle cx="270" cy="400" r="12"/>
+    <circle cx="310" cy="400" r="12"/>
+    <circle cx="350" cy="400" r="12"/>
+  </g>
+</svg>
