@@ -1,16 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { login, isLoading, error, clearError } = useAuth();
+  const { login, isLoading, error, clearError, isAuthenticated, user } = useAuth();
   
   const [step, setStep] = useState<'username' | 'password'>('username');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // 이미 로그인된 사용자를 대시보드로 리다이렉트
+  useEffect(() => {
+    if (isAuthenticated && user && !isLoading) {
+      console.log('[LoginPage] 이미 로그인된 사용자 감지, 리다이렉트 중:', user.username);
+      if (user.role === 'student') {
+        navigate('/dashboard/student', { replace: true });
+      } else {
+        navigate('/dashboard/admin/main', { replace: true });
+      }
+    }
+  }, [isAuthenticated, user, isLoading, navigate]);
 
   const handleUsernameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -7,7 +7,7 @@ declare global {
 }
 
 // PWA 업데이트 알림 함수
-const showUpdateNotification = () => {
+const showUpdateNotification = (setShouldReload?: (value: boolean) => void) => {
   const notification = document.createElement('div');
   notification.innerHTML = `
     <div style="
@@ -60,6 +60,9 @@ const showUpdateNotification = () => {
   
   // 업데이트 버튼 클릭 시
   notification.querySelector('#update-btn')?.addEventListener('click', () => {
+    if (setShouldReload) {
+      setShouldReload(true);
+    }
     if (window.workbox) {
       window.workbox.messageSkipWaiting();
     }
@@ -162,12 +165,15 @@ export const initPWA = () => {
 
     // 새 업데이트 감지
     wb.addEventListener('waiting', () => {
-      showUpdateNotification();
+      showUpdateNotification((value) => { shouldReload = value; });
     });
 
-    // Service Worker 활성화 후 페이지 새로고침
+    // Service Worker 활성화 후 페이지 새로고침 (사용자가 업데이트를 승인한 경우에만)
+    let shouldReload = false;
     wb.addEventListener('controlling', () => {
-      window.location.reload();
+      if (shouldReload) {
+        window.location.reload();
+      }
     });
 
     wb.register();

@@ -111,19 +111,19 @@ router.post('/login', async (req, res) => {
         role: user.role 
       },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
     );
 
     // Refresh Token 생성
     const refreshToken = jwt.sign(
       { userId: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET,
+      { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '30d' }
     );
 
     // Refresh Token을 데이터베이스에 저장
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7일 후 만료
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30일 후 만료
 
     try {
       // 기존 Refresh Token 삭제 (테이블이 없어도 에러를 무시)
@@ -155,7 +155,18 @@ router.post('/login', async (req, res) => {
           id: user.id,
           username: user.username,
           name: user.name,
-          role: user.role
+          role: user.role,
+          // 학생인 경우 추가 정보 포함
+          ...(user.role === 'student' && {
+            student_id: user.student_id,
+            grade: user.grade,
+            class: user.class,
+            number: user.number,
+            rfid_card_id: user.rfid_card_id,
+            profile_image: user.profile_image,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+          })
         },
         accessToken,
         refreshToken
@@ -317,7 +328,7 @@ router.post('/refresh', async (req, res) => {
     // Refresh Token 검증
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+      decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET);
     } catch (error) {
       return res.status(401).json({
         success: false,
@@ -354,7 +365,7 @@ router.post('/refresh', async (req, res) => {
         role: user.role 
       },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
     );
 
     logger.info(`Access Token 갱신: ${user.username}`);
@@ -368,7 +379,18 @@ router.post('/refresh', async (req, res) => {
           id: user.id,
           username: user.username,
           name: user.name,
-          role: user.role
+          role: user.role,
+          // 학생인 경우 추가 정보 포함
+          ...(user.role === 'student' && {
+            student_id: user.student_id,
+            grade: user.grade,
+            class: user.class,
+            number: user.number,
+            rfid_card_id: user.rfid_card_id,
+            profile_image: user.profile_image,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+          })
         }
       }
     });

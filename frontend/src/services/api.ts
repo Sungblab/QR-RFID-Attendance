@@ -37,7 +37,8 @@ api.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       error.response?.data?.code === 'TOKEN_EXPIRED' &&
-      !originalRequest._retry
+      !originalRequest._retry &&
+      originalRequest.url !== '/auth/refresh' // 토큰 갱신 요청 자체는 제외
     ) {
       originalRequest._retry = true;
 
@@ -52,21 +53,35 @@ api.interceptors.response.use(
           refreshToken,
         });
 
-        const { accessToken } = response.data.data;
-        localStorage.setItem('accessToken', accessToken);
+        if (response.data.success && response.data.data) {
+          const { accessToken, user } = response.data.data;
+          localStorage.setItem('accessToken', accessToken);
+          
+          // 사용자 정보도 업데이트
+          if (user) {
+            localStorage.setItem('user', JSON.stringify(user));
+          }
 
-        // 원래 요청 재시도
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-        return api(originalRequest);
+          // 원래 요청 재시도
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+          return api(originalRequest);
+        } else {
+          throw new Error('Token refresh failed');
+        }
       } catch (refreshError) {
+        console.error('토큰 갱신 실패:', refreshError);
+        
         // 토큰 갱신 실패 시 로그아웃 처리
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
+        
         // 현재 페이지가 인증이 필요하지 않은 페이지가 아닐 때만 리다이렉트
-        if (!window.location.pathname.startsWith('/auth/')) {
+        // 또한 이미 로그인 페이지인 경우에도 리다이렉트하지 않음
+        if (!window.location.pathname.startsWith('/auth/') && window.location.pathname !== '/auth/login') {
           window.location.href = '/auth/login';
         }
+        
         return Promise.reject(refreshError);
       }
     }
@@ -171,6 +186,11 @@ export interface UpdateAdminRequest {
 }
 
 export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface AdminChangePasswordRequest {
   newPassword: string;
 }
 
@@ -178,7 +198,7 @@ export interface BulkImportResult {
   created: Student[];
   errors: Array<{
     row: number;
-    data: any;
+    data: unknown;
     error: string;
   }>;
 }
@@ -381,9 +401,17 @@ export const userApi = {
     return response.data;
   },
 
-  // 관리자 비밀번호 변경
+  // 관리자 비밀번호 변경 (자신의 비밀번호)
   changeAdminPassword: async (adminId: number, data: ChangePasswordRequest): Promise<ApiResponse> => {
     const response: AxiosResponse<ApiResponse> = await api.put(`/users/admins/${adminId}/change-password`, data);
+    return response.data;
+  },
+  // 관리자가 다른 사용자 비밀번호 변경
+  adminChangeUserPassword: async (userId: number, userType: 'student' | 'admin', data: AdminChangePasswordRequest): Promise<ApiResponse> => {
+    const endpoint = userType === 'student' ? 
+      `/users/students/${userId}/change-password` : 
+      `/users/admins/${userId}/change-password`;
+    const response: AxiosResponse<ApiResponse> = await api.put(endpoint, data);
     return response.data;
   },
 

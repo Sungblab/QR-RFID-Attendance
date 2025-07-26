@@ -11,6 +11,11 @@ interface SerialPort {
   manufacturer?: string;
 }
 
+interface RFIDData {
+  type: 'RFID_TAG';
+  card_id: string;
+}
+
 
 const RFIDManagement: React.FC = () => {
   const [students, setStudents] = useState<RFIDUser[]>([]);
@@ -42,7 +47,7 @@ const RFIDManagement: React.FC = () => {
   const [generatedCardId, setGeneratedCardId] = useState('');
   
   // RFID 이벤트 리스너
-  const rfidListenerRef = useRef<((data: any) => void) | null>(null);
+  const rfidListenerRef = useRef<((data: RFIDData) => void) | null>(null);
   const [isRfidListening, setIsRfidListening] = useState(false);
 
   // 암호학적으로 안전한 랜덤 RFID 코드 생성 (4바이트 = 8자리 16진수)
@@ -177,7 +182,7 @@ const RFIDManagement: React.FC = () => {
     }
 
     // RFID 이벤트 핸들러 생성
-    const rfidEventHandler = async (data: any) => {
+    const rfidEventHandler = async (data: RFIDData) => {
       try {
         if (data.type === 'RFID_TAG' && data.card_id) {
           console.log(`[DEBUG] RFIDManagement - ✅ RFID 태그 감지: ${data.card_id}`);

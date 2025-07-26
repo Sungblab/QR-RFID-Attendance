@@ -52,6 +52,7 @@ const StudentProfile: React.FC = () => {
 
       // 실제 API 호출로 비밀번호 변경
       const response = await userApi.changeStudentPassword(user.id, {
+        currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword
       });
 
@@ -66,10 +67,12 @@ const StudentProfile: React.FC = () => {
       } else {
         setError(response.message || '비밀번호 변경에 실패했습니다.');
       }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.message || '비밀번호 변경에 실패했습니다.';
-      setError(errorMessage);
-      console.error('Error changing password:', err);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('비밀번호 변경에 실패했습니다.');
+      }
     } finally {
       setLoading(false);
     }

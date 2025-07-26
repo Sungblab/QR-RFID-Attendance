@@ -388,9 +388,9 @@ const UserManagement: React.FC = () => {
     try {
       let response;
       if (selectedStudent) {
-        response = await userApi.changeStudentPassword(selectedStudent.id, { newPassword: password });
+        response = await userApi.adminChangeUserPassword(selectedStudent.id, 'student', { newPassword: password });
       } else if (selectedAdmin) {
-        response = await userApi.changeAdminPassword(selectedAdmin.id, { newPassword: password });
+        response = await userApi.adminChangeUserPassword(selectedAdmin.id, 'admin', { newPassword: password });
       } else {
         return;
       }
@@ -525,6 +525,7 @@ const UserManagement: React.FC = () => {
       }
 
       const response = await userApi.changeAdminPassword(user.id, {
+        currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword
       });
 
